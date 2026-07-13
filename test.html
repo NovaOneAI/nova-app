@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOVA Debug Test</title>
+<style>
+body { background:#0a0f12; color:#e0e8f0; font-family:sans-serif; padding:20px; max-width:500px; margin:0 auto; }
+h2 { color:#1DB87A; }
+button { background:#1DB87A; color:#000; border:none; padding:12px 20px; border-radius:10px; font-size:14px; font-weight:700; cursor:pointer; width:100%; margin:6px 0; }
+button.red { background:#FF4444; color:#fff; }
+.result { background:#111; border:1px solid #1DB87A; border-radius:8px; padding:12px; margin:8px 0; font-size:12px; line-height:1.6; white-space:pre-wrap; word-break:break-all; }
+.ok { color:#1DB87A; }
+.err { color:#FF4444; }
+.warn { color:#F0A050; }
+input { background:#111; border:1px solid #333; color:#fff; padding:10px; border-radius:8px; width:100%; box-sizing:border-box; font-size:12px; margin:4px 0; }
+</style>
+</head>
+<body>
+<h2>NOVA Debug Test</h2>
+<p style="font-size:12px;color:#8A9BAD;">Tippe die Buttons der Reihe nach an um zu sehen was funktioniert.</p>
+
+<h3 style="color:#8A9BAD;font-size:13px;">1. Browser-Checks</h3>
+<button onclick="checkBrowser()">Browser prüfen</button>
+<div id="browserResult" class="result">Noch nicht geprüft...</div>
+
+<h3 style="color:#8A9BAD;font-size:13px;">2. TTS (Sprache) Test</h3>
+<button onclick="testTTS()">Nova sprechen lassen (Browser-TTS)</button>
+<div id="ttsResult" class="result">Noch nicht getestet...</div>
+
+<h3 style="color:#8A9BAD;font-size:13px;">3. Mikrofon Test</h3>
+<button onclick="testMic()">Mikrofon testen</button>
+<button class="red" onclick="stopMic()" style="display:none" id="stopMicBtn">Aufnahme stoppen</button>
+<div id="micResult" class="result">Noch nicht getestet...</div>
+
+<h3 style="color:#8A9BAD;font-size:13px;">4. API Key</h3>
+<input id="testKey" placeholder="OpenAI Key eingeben (sk-proj-...)" type="password">
+<button onclick="testAPI()">OpenAI API testen</button>
+<div id="apiResult" class="result">Noch nicht getestet...</div>
+
+<h3 style="color:#8A9BAD;font-size:13px;">5. OpenAI TTS Test</h3>
+<button onclick="testOpenAITTS()">OpenAI Nova-Stimme testen</button>
+<div id="openaiTTSResult" class="result">Erst API-Key eingeben und testen</div>
+
+<h3 style="color:#8A9BAD;font-size:13px;">6. Whisper Test</h3>
+<button onclick="startWhisperTest()">Aufnahme für Whisper starten</button>
+<button class="red" onclick="stopWhisperTest()" style="display:none" id="stopWhisperBtn">Aufnahme stoppen & zu Whisper schicken</button>
+<div id="whisperResult" class="result">Erst API-Key eingeben und testen</div>
+
+<script>
+var micStream = null;
+var whisperRecorder = null;
+var whisperChunks = [];
+
+function log(id, msg, cls) {
+  var el = document.getElementById(id);
+  el.innerHTML += '<span class="'+(cls||'')+'">' + msg + '</span>\n';
+}
+
+function checkBrowser() {
+  var el = document.getElementById('browserResult');
+  el.innerHTML = '';
+  log('browserResult', 'Browser: ' + navigator.userAgent.substring(0,80), '');
+  log('browserResult', 'iOS: ' + (/iphone|ipad|ipod/i.test(navigator.userAgent) ? 'JA' : 'Nein'), '');
+  log('browserResult', 'Standalone PWA: ' + (window.navigator.standalone ? 'JA' : 'Nein'), '');
+  log('browserResult', 'HTTPS: ' + (location.protocol === 'https:' ? '✓ JA' : '✗ NEIN - Mikrofon braucht HTTPS!'), location.protocol === 'https:' ? 'ok' : 'err');
+  log('browserResult', 'speechSynthesis: ' + (window.speechSynthesis ? '✓ vorhanden' : '✗ FEHLT'), window.speechSynthesis ? 'ok' : 'err');
+  log('browserResult', 'MediaRecorder: ' + (window.MediaRecorder ? '✓ vorhanden' : '✗ FEHLT'), window.MediaRecorder ? 'ok' : 'err');
+  log('browserResult', 'getUserMedia: ' + (navigator.mediaDevices && navigator.mediaDevices.getUserMedia ? '✓ vorhanden' : '✗ FEHLT'), navigator.mediaDevices && navigator.mediaDevices.getUserMedia ? 'ok' : 'err');
+  log('browserResult', 'WebM Support: ' + (MediaRecorder.isTypeSupported('audio/webm') ? '✓ ja' : '✗ nein'), MediaRecorder.isTypeSupported('audio/webm') ? 'ok' : 'warn');
+  log('browserResult', 'MP4 Support: ' + (MediaRecorder.isTypeSupported('audio/mp4') ? '✓ ja' : '✗ nein'), MediaRecorder.isTypeSupported('audio/mp4') ? 'ok' : 'warn');
+  log('browserResult', 'localStorage: ' + (localStorage.getItem('nova_openai_key') ? '✓ Key gespeichert: ' + localStorage.getItem('nova_openai_key').substring(0,20) + '...' : '✗ Kein Key gespeichert'), localStorage.getItem('nova_openai_key') ? 'ok' : 'warn');
+  var voices = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
+  log('browserResult', 'TTS Stimmen geladen: ' + voices.length + (voices.length === 0 ? ' (tippe TTS-Button - iOS laedt Stimmen lazy)' : ''), voices.length > 0 ? 'ok' : 'warn');
+  var deVoices = voices.filter(function(v){ return v.lang.indexOf('de') === 0; });
+  if(deVoices.length > 0) {
+    log('browserResult', 'Deutsche Stimmen: ' + deVoices.map(function(v){ return v.name; }).join(', '), 'ok');
+  }
+}
+
+function testTTS() {
+  var el = document.getElementById('ttsResult');
+  el.innerHTML = '';
+  if(!window.speechSynthesis) { log('ttsResult','✗ speechSynthesis nicht verfuegbar','err'); return; }
+  window.speechSynthesis.cancel();
+  var utt = new SpeechSynthesisUtterance('Hallo! Ich bin Nova, dein persoenlicher Ernaehrungscoach. Hoerst du mich?');
+  utt.lang = 'de-DE';
+  utt.rate = 0.9;
+  utt.onstart = function() { log('ttsResult','✓ TTS gestartet - hoerst du etwas?','ok'); };
+  utt.onend = function() { log('ttsResult','✓ TTS beendet','ok'); };
+  utt.onerror = function(e) { log('ttsResult','✗ TTS Fehler: ' + JSON.stringify(e),'err'); };
+  var voices = window.speechSynthesis.getVoices();
+  var deVoice = voices.find(function(v){ return v.lang.indexOf('de')===0; });
+  if(deVoice) { utt.voice = deVoice; log('ttsResult','Stimme: ' + deVoice.name,''); }
+  else { log('ttsResult','Keine DE-Stimme gefunden, Standard wird verwendet','warn'); }
+  try {
+    window.speechSynthesis.speak(utt);
+    log('ttsResult','speak() aufgerufen...','');
+  } catch(e) {
+    log('ttsResult','✗ speak() Fehler: ' + e.message,'err');
+  }
+}
+
+function testMic() {
+  var el = document.getElementById('micResult');
+  el.innerHTML = '';
+  log('micResult','Mikrofon-Zugriff wird angefragt...','');
+  navigator.mediaDevices.getUserMedia({ audio: true })
+    .then(function(stream) {
+      micStream = stream;
+      log('micResult','✓ Mikrofon-Zugriff erteilt!','ok');
+      log('micResult','Audio-Tracks: ' + stream.getAudioTracks().length,'ok');
+      document.getElementById('stopMicBtn').style.display='block';
+    })
+    .catch(function(err) {
+      log('micResult','✗ Mikrofon-Fehler: ' + err.name + ' - ' + err.message,'err');
+      if(err.name === 'NotAllowedError') log('micResult','→ Mikrofon-Erlaubnis wurde verweigert. In Safari: Einstellungen > Safari > Mikrofon','warn');
+      if(err.name === 'NotFoundError') log('micResult','→ Kein Mikrofon gefunden','err');
+    });
+}
+
+function stopMic() {
+  if(micStream) { micStream.getTracks().forEach(function(t){ t.stop(); }); micStream = null; }
+  document.getElementById('stopMicBtn').style.display='none';
+  log('micResult','Mikrofon gestoppt','');
+}
+
+function testAPI() {
+  var key = document.getElementById('testKey').value.trim();
+  if(!key) { log('apiResult','Bitte Key eingeben!','err'); return; }
+  var el = document.getElementById('apiResult');
+  el.innerHTML = '';
+  log('apiResult','Verbinde mit OpenAI...','');
+
+  fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+key },
+    body: JSON.stringify({
+      model: 'gpt-4o-mini',
+      max_tokens: 50,
+      messages: [
+        { role:'system', content:'Antworte nur auf Deutsch in einem Satz.' },
+        { role:'user', content:'Sag kurz Hallo!' }
+      ]
+    })
+  })
+  .then(function(r) {
+    log('apiResult','HTTP Status: ' + r.status, r.ok ? 'ok' : 'err');
+    return r.json();
+  })
+  .then(function(data) {
+    if(data.choices && data.choices[0]) {
+      log('apiResult','✓ API funktioniert!','ok');
+      log('apiResult','Nova sagt: ' + data.choices[0].message.content,'ok');
+      localStorage.setItem('nova_openai_key', key);
+      log('apiResult','✓ Key in localStorage gespeichert','ok');
+    } else if(data.error) {
+      log('apiResult','✗ API Fehler: ' + data.error.message,'err');
+      log('apiResult','Typ: ' + data.error.type,'err');
+    }
+  })
+  .catch(function(err) {
+    log('apiResult','✗ Netzwerkfehler: ' + err.message,'err');
+    log('apiResult','→ Moegliche CORS-Blockierung oder kein Internet','warn');
+  });
+}
+
+function testOpenAITTS() {
+  var key = document.getElementById('testKey').value.trim() || localStorage.getItem('nova_openai_key');
+  if(!key) { log('openaiTTSResult','Bitte zuerst API testen','err'); return; }
+  var el = document.getElementById('openaiTTSResult');
+  el.innerHTML = '';
+  log('openaiTTSResult','OpenAI TTS wird angefragt...','');
+  fetch('https://api.openai.com/v1/audio/speech', {
+    method:'POST',
+    headers:{'Authorization':'Bearer '+key,'Content-Type':'application/json'},
+    body: JSON.stringify({ model:'tts-1', voice:'nova', input:'Hallo! Ich bin Nova.', speed:1.0 })
+  })
+  .then(function(r) {
+    log('openaiTTSResult','HTTP Status: ' + r.status, r.ok ? 'ok' : 'err');
+    if(!r.ok) { r.json().then(function(d){ log('openaiTTSResult','Fehler: '+JSON.stringify(d),'err'); }); return null; }
+    return r.blob();
+  })
+  .then(function(blob) {
+    if(!blob) return;
+    log('openaiTTSResult','✓ Audio erhalten: ' + Math.round(blob.size/1024) + ' KB','ok');
+    var url = URL.createObjectURL(blob);
+    var audio = new Audio(url);
+    audio.onplay = function() { log('openaiTTSResult','✓ Audio spielt ab - hoerst du Nova?','ok'); };
+    audio.onerror = function(e) { log('openaiTTSResult','✗ Audio-Fehler: ' + JSON.stringify(e),'err'); };
+    audio.play().catch(function(e) { log('openaiTTSResult','✗ play() Fehler: ' + e.message + ' (iOS braucht User-Tap)','err'); });
+  })
+  .catch(function(err) { log('openaiTTSResult','✗ Fehler: '+err.message,'err'); });
+}
+
+function startWhisperTest() {
+  var key = document.getElementById('testKey').value.trim() || localStorage.getItem('nova_openai_key');
+  if(!key) { log('whisperResult','Bitte zuerst API testen','err'); return; }
+  whisperChunks = [];
+  var el = document.getElementById('whisperResult');
+  el.innerHTML = '';
+  navigator.mediaDevices.getUserMedia({ audio: true })
+    .then(function(stream) {
+      var mime = MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
+      log('whisperResult','MIME: ' + (mime||'default'),'');
+      whisperRecorder = new MediaRecorder(stream, mime ? {mimeType:mime} : {});
+      whisperRecorder.ondataavailable = function(e) { if(e.data.size>0) whisperChunks.push(e.data); };
+      whisperRecorder.onstop = function() {
+        stream.getTracks().forEach(function(t){ t.stop(); });
+        sendToWhisper(key, mime);
+      };
+      whisperRecorder.start(100);
+      log('whisperResult','✓ Aufnahme laeuft - sprich jetzt!','ok');
+      document.getElementById('stopWhisperBtn').style.display='block';
+    })
+    .catch(function(err) { log('whisperResult','✗ Mikrofon: '+err.message,'err'); });
+}
+
+function stopWhisperTest() {
+  document.getElementById('stopWhisperBtn').style.display='none';
+  if(whisperRecorder && whisperRecorder.state==='recording') whisperRecorder.stop();
+}
+
+function sendToWhisper(key, mime) {
+  log('whisperResult','Sende an Whisper...','');
+  var ext = mime && mime.indexOf('mp4')>=0 ? 'mp4' : 'webm';
+  var blob = new Blob(whisperChunks, { type: mime||'audio/webm' });
+  log('whisperResult','Blob Groesse: ' + Math.round(blob.size/1024) + ' KB','');
+  var fd = new FormData();
+  fd.append('file', blob, 'test.'+ext);
+  fd.append('model','whisper-1');
+  fd.append('language','de');
+  fetch('https://api.openai.com/v1/audio/transcriptions',{
+    method:'POST',
+    headers:{'Authorization':'Bearer '+key},
+    body:fd
+  })
+  .then(function(r) {
+    log('whisperResult','HTTP Status: '+r.status, r.ok?'ok':'err');
+    return r.json();
+  })
+  .then(function(data) {
+    if(data.text) log('whisperResult','✓ Erkannt: "'+data.text+'"','ok');
+    else log('whisperResult','✗ Kein Text: '+JSON.stringify(data),'err');
+  })
+  .catch(function(err){ log('whisperResult','✗ Fehler: '+err.message,'err'); });
+}
+
+// Stimmen nachladen
+if(window.speechSynthesis) {
+  window.speechSynthesis.onvoiceschanged = function() {
+    var el = document.getElementById('browserResult');
+    if(el.innerHTML.indexOf('Noch nicht')<0) {
+      var v = window.speechSynthesis.getVoices();
+      log('browserResult','Stimmen nachgeladen: '+v.length,'ok');
+    }
+  };
+}
+</script>
+</body>
+</html>
