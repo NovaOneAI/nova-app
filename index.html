@@ -448,6 +448,35 @@ html, body { height: 100%; background: #040608; font-family: 'DM Sans', sans-ser
 <div class="shell"><div class="phone" id="phone">
 
 <!-- WELCOME -->
+<!-- API SETUP SCREEN (einmalig, nur wenn kein Key vorhanden) -->
+<div class="scr hide" id="setup">
+  <div class="notch"></div>
+  <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:28px;text-align:center;">
+    <div class="snw" style="justify-content:center;margin-bottom:24px;">
+      <svg width="80" height="80" viewBox="0 0 100 100"><defs><radialGradient id="sg1" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#5DFFB8"/><stop offset="40%" stop-color="#1DB87A"/><stop offset="100%" stop-color="#0A5C3A" stop-opacity="0"/></radialGradient></defs><circle cx="50" cy="50" r="45" fill="url(#sg1)" opacity="0.3"/><circle cx="50" cy="50" r="28" fill="url(#sg1)"/><circle cx="50" cy="50" r="14" fill="#1DB87A"/><circle cx="50" cy="50" r="7" fill="#5DFFB8"/></svg>
+    </div>
+    <div style="font-family:'Syne',sans-serif;font-size:32px;font-weight:800;color:var(--t);margin-bottom:8px;">NO<span style="color:var(--g)">VA</span></div>
+    <div style="font-size:13px;color:var(--t2);line-height:1.6;margin-bottom:28px;">Einmalige Einrichtung – dein API-Key wird nur auf diesem Gerät gespeichert und nie hochgeladen.</div>
+
+    <div style="width:100%;text-align:left;margin-bottom:6px;font-size:11px;color:var(--t3);">OpenAI API-Key (von platform.openai.com)</div>
+    <div style="position:relative;width:100%;margin-bottom:16px;">
+      <input id="setupOpenAIKey" type="password" class="ifield" placeholder="sk-proj-..." style="margin-bottom:0;padding-right:44px;font-size:12px;font-family:monospace;">
+      <button onclick="toggleKeyVisibility('setupOpenAIKey')" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--t3);cursor:pointer;font-size:14px;">👁</button>
+    </div>
+
+    <div style="width:100%;text-align:left;margin-bottom:6px;font-size:11px;color:var(--t3);">Spoonacular API-Key (von spoonacular.com – optional)</div>
+    <div style="position:relative;width:100%;margin-bottom:24px;">
+      <input id="setupSpoonacularKey" type="password" class="ifield" placeholder="Spoonacular Key..." style="margin-bottom:0;padding-right:44px;font-size:12px;font-family:monospace;" value="80405d87c1024b4ab8064f82e88b5412">
+      <button onclick="toggleKeyVisibility('setupSpoonacularKey')" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--t3);cursor:pointer;font-size:14px;">👁</button>
+    </div>
+
+    <div id="setupError" style="display:none;color:#FF4444;font-size:12px;margin-bottom:12px;"></div>
+
+    <button class="btnp" style="width:100%" onclick="saveKeysAndStart()">Keys speichern & starten</button>
+    <div style="font-size:10px;color:var(--t3);margin-top:12px;line-height:1.5;">🔒 Keys werden nur lokal auf diesem Gerät gespeichert.<br>GitHub und andere sehen sie nie.</div>
+  </div>
+</div>
+
 <div class="scr" id="wl">
   <div class="notch"></div>
   <div class="sb"><div class="sbt" id="wt"></div><div style="font-size:11px;color:var(--t3)">...</div></div>
@@ -3179,8 +3208,9 @@ function ctStopRecord() {
 // ============================================================
 // API KEYS
 // ============================================================
-var OPENAI_KEY = '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';
-var SPOONACULAR_KEY = '80405d87c1024b4ab8064f82e88b5412';
+// Keys werden sicher aus lokalem Gerätespeicher geladen – nie im Code
+var OPENAI_KEY = localStorage.getItem('nova_openai_key') || '';
+var SPOONACULAR_KEY = localStorage.getItem('nova_spoonacular_key') || '80405d87c1024b4ab8064f82e88b5412';
 
 // Gespraechsverlauf fuer GPT-4o (letzte 8 Nachrichten)
 var chatHistory = [];
@@ -4062,20 +4092,64 @@ function swapIngredient(oldIngredient, newIngredient, mealId) {
 
 
 // ============================================================
-// INIT
+// SETUP – API Keys sicher speichern
 // ============================================================
+function saveKeysAndStart() {
+  var openaiKey = document.getElementById('setupOpenAIKey').value.trim();
+  var spoonKey = document.getElementById('setupSpoonacularKey').value.trim();
+  var errEl = document.getElementById('setupError');
+
+  if(!openaiKey || !openaiKey.startsWith('sk-')) {
+    errEl.style.display = 'block';
+    errEl.textContent = 'Bitte gib einen gueltigen OpenAI Key ein (beginnt mit sk-).';
+    return;
+  }
+
+  // Keys sicher im lokalen Gerätespeicher speichern
+  localStorage.setItem('nova_openai_key', openaiKey);
+  if(spoonKey) localStorage.setItem('nova_spoonacular_key', spoonKey);
+
+  // Keys in laufende Variablen laden
+  OPENAI_KEY = openaiKey;
+  if(spoonKey) SPOONACULAR_KEY = spoonKey;
+
+  errEl.style.display = 'none';
+  goTo('wl');
+}
+
+function toggleKeyVisibility(inputId) {
+  var inp = document.getElementById(inputId);
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+}
+
+function resetKeys() {
+  localStorage.removeItem('nova_openai_key');
+  localStorage.removeItem('nova_spoonacular_key');
+  OPENAI_KEY = '';
+  goTo('setup');
+}
+
+// Beim Start pruefen ob Keys vorhanden
+(function checkKeysOnLoad() {
+  var savedKey = localStorage.getItem('nova_openai_key');
+  if(savedKey) {
+    OPENAI_KEY = savedKey;
+    var spoon = localStorage.getItem('nova_spoonacular_key');
+    if(spoon) SPOONACULAR_KEY = spoon;
+    // Key vorhanden – direkt zur App
+    goTo('wl');
+  } else {
+    // Kein Key – Setup-Screen zeigen
+    goTo('setup');
+  }
+})();
 syncMacros();
 renderTodayMeals();
 renderStep();
 updateHomeStatusLabels();
 
 // Initial chat message
-addMsg('Willkommen bei NOVA! Ich bin dein persoenlicher KI-Ernaehrungscoach. Geh zurueck zum Onboarding um deinen Plan zu erstellen - oder frag mich einfach was du wissen moechtest!', false);
-
-// Demo: zeige den 14-Tage Conversion-Trigger nach kurzer Verzoegerung
-setTimeout(function(){
-  showConversionTrigger();
-}, 4500);
+addMsg('Hey! Ich bin Nova, dein persoenlicher KI-Ernaehrungscoach. Druecke und halte den Mikrofon-Button um mit mir zu sprechen – oder schreib mir einfach!', false);
 </script>
 
 <script>
