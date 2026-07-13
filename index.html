@@ -147,7 +147,7 @@ html, body { height: 100%; background: #040608; font-family: 'DM Sans', sans-ser
 
 /* HOME */
 #hm { background:var(--bg); overflow:hidden; }
-.hmsc { flex:1; overflow-y:auto; padding-bottom:80px; }
+.hmsc { flex:1; overflow-y:auto; padding-bottom:100px; }
 .hmtop { padding:14px 20px 0; display:flex; justify-content:space-between; align-items:center; }
 .hmdt { font-size:12px; color:var(--t3); }
 .avt { width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg,var(--g),var(--p)); cursor:pointer; flex-shrink:0; }
@@ -591,6 +591,7 @@ html, body { height: 100%; background: #040608; font-family: 'DM Sans', sans-ser
     <div class="mlsc">
       <div class="sechr"><div class="secht">Tagesplan heute</div><div class="sechl" onclick="goTo('diary')">Tagebuch</div></div>
       <div id="todayMeals"></div>
+      <div style="height:90px;"></div>
     </div>
   </div>
   <div class="bnav">
@@ -3054,22 +3055,33 @@ function showIntroSubtitle(idx) {
   var sub = document.getElementById('introSubtitle');
   if(!sub) return;
 
-  // Fade in
-  sub.textContent = introSpeechTexts[idx];
-  sub.style.transition = 'opacity 0.5s ease';
+  var text = introSpeechTexts[idx];
+  var chars = text.split('');
+  var charIdx = 0;
+
+  // Einblenden: Buchstabe fuer Buchstabe
+  sub.textContent = '';
+  sub.style.transition = 'opacity 0.3s ease';
   sub.style.opacity = '1';
 
-  // Anzeigedauer abhaengig von Textlaenge (ca. 60ms pro Zeichen, min 2.5s)
-  var displayMs = Math.max(2500, introSpeechTexts[idx].length * 55);
-
-  setTimeout(function() {
-    // Fade out
-    sub.style.transition = 'opacity 0.4s ease';
-    sub.style.opacity = '0';
-    setTimeout(function() {
-      showIntroSubtitle(idx + 1);
-    }, 500);
-  }, displayMs);
+  var typeTimer = setInterval(function() {
+    if(charIdx < chars.length) {
+      sub.textContent += chars[charIdx];
+      charIdx++;
+    } else {
+      clearInterval(typeTimer);
+      // Kurz stehen lassen, dann ausblenden
+      var pauseMs = Math.max(1200, text.length * 25);
+      setTimeout(function() {
+        sub.style.transition = 'opacity 0.5s ease';
+        sub.style.opacity = '0';
+        setTimeout(function() {
+          sub.textContent = '';
+          showIntroSubtitle(idx + 1);
+        }, 550);
+      }, pauseMs);
+    }
+  }, 38); // ~38ms pro Buchstabe = fluessig aber lesbar
 }
 
 function novaSpeak(texts) {
