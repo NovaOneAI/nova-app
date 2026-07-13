@@ -3716,45 +3716,44 @@ function startVoiceRecording() {
   isRecording = true;
   audioChunks = [];
 
-  function beginRecording(stream) {
-    var mimeType = '';
-    if(MediaRecorder.isTypeSupported('audio/mp4')) mimeType = 'audio/mp4';
-    else if(MediaRecorder.isTypeSupported('audio/webm')) mimeType = 'audio/webm';
-    else if(MediaRecorder.isTypeSupported('audio/ogg')) mimeType = 'audio/ogg';
+  // Immer frischen Stream holen - iOS beendet inaktive Streams
+  navigator.mediaDevices.getUserMedia({ audio: true })
+    .then(function(stream) {
+      globalMicStream = stream;
 
-    var options = mimeType ? { mimeType: mimeType } : {};
-    try {
-      mediaRecorder = new MediaRecorder(stream, options);
-    } catch(e) {
-      mediaRecorder = new MediaRecorder(stream);
-      mimeType = '';
-    }
+      // MIME-Type: iOS braucht mp4
+      var mimeType = '';
+      if(MediaRecorder.isTypeSupported('audio/mp4')) mimeType = 'audio/mp4';
+      else if(MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) mimeType = 'audio/webm;codecs=opus';
+      else if(MediaRecorder.isTypeSupported('audio/webm')) mimeType = 'audio/webm';
 
-    mediaRecorder.ondataavailable = function(e) {
-      if(e.data && e.data.size > 0) audioChunks.push(e.data);
-    };
-    mediaRecorder.onstop = function() {
-      if(audioChunks.length > 0) transcribeAudio(mimeType);
-    };
-    mediaRecorder.start(100);
-  }
+      try {
+        mediaRecorder = mimeType ? new MediaRecorder(stream, {mimeType:mimeType}) : new MediaRecorder(stream);
+      } catch(e) {
+        mediaRecorder = new MediaRecorder(stream);
+        mimeType = '';
+      }
 
-  // Vorgehaltenen Stream nutzen falls vorhanden
-  if(globalMicStream && globalMicStream.active) {
-    beginRecording(globalMicStream);
-  } else {
-    // Neu anfragen
-    navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
-      .then(function(stream) {
-        globalMicStream = stream;
-        beginRecording(stream);
-      })
-      .catch(function(err) {
-        console.error('Mic error:', err);
-        isRecording = false;
-        startBrowserSpeech();
-      });
-  }
+      mediaRecorder.ondataavailable = function(e) {
+        if(e.data && e.data.size > 0) audioChunks.push(e.data);
+      };
+
+      mediaRecorder.onstop = function() {
+        // Stream nach Aufnahme beenden
+        stream.getTracks().forEach(function(t){ t.stop(); });
+        globalMicStream = null;
+        if(audioChunks.length > 0) {
+          transcribeAudio(mimeType);
+        }
+      };
+
+      mediaRecorder.start(250); // 250ms Chunks
+    })
+    .catch(function(err) {
+      console.error('Mic error:', err);
+      isRecording = false;
+      addMsg('Mikrofon-Zugriff verweigert. Bitte in Safari-Einstellungen erlauben.', false);
+    });
 }
 
 function stopVoiceRecording() {
@@ -3762,23 +3761,31 @@ function stopVoiceRecording() {
   isRecording = false;
   if(mediaRecorder && mediaRecorder.state === 'recording') {
     mediaRecorder.stop();
-    // Globalen Stream NICHT stoppen - fuer naechste Aufnahme offen halten
   }
 }
 
 function transcribeAudio(mimeType) {
-  if(audioChunks.length === 0) return;
+  if(!audioChunks || audioChunks.length === 0) return;
+
   var ctOrb = document.getElementById('ctOrb');
   if(ctOrb) ctOrb.classList.add('act');
 
-  var actualMime = mimeType || 'audio/webm';
-  var ext = actualMime.indexOf('mp4') >= 0 ? 'mp4' : actualMime.indexOf('ogg') >= 0 ? 'ogg' : 'webm';
+  // Statusmeldung im Chat
+  addMsg('🎙️ Erkenne Sprache...', false);
+
+  var actualMime = mimeType || 'audio/mp4';
+  var ext = actualMime.indexOf('mp4') >= 0 ? 'm4a' : actualMime.indexOf('ogg') >= 0 ? 'ogg' : 'webm';
   var blob = new Blob(audioChunks, { type: actualMime });
   audioChunks = [];
 
-  // Mindestgroesse pruefen (zu kurze Aufnahmen ablehnen)
-  if(blob.size < 1000) {
+  console.log('Audio blob:', blob.size, 'bytes, type:', actualMime);
+
+  if(blob.size < 500) {
     if(ctOrb) ctOrb.classList.remove('act');
+    // Letzte Nachricht entfernen
+    var msgs = document.getElementById('ctmsg');
+    if(msgs && msgs.lastChild) msgs.removeChild(msgs.lastChild);
+    addMsg('Aufnahme zu kurz - bitte laenger sprechen!', false);
     return;
   }
 
@@ -3786,6 +3793,7 @@ function transcribeAudio(mimeType) {
   fd.append('file', blob, 'voice.' + ext);
   fd.append('model', 'whisper-1');
   fd.append('language', 'de');
+  fd.append('response_format', 'json');
 
   fetch('https://api.openai.com/v1/audio/transcriptions', {
     method: 'POST',
@@ -3793,31 +3801,38 @@ function transcribeAudio(mimeType) {
     body: fd
   })
   .then(function(r) {
-    if(!r.ok) throw new Error('Whisper HTTP ' + r.status);
+    if(!r.ok) return r.json().then(function(e){ throw new Error(JSON.stringify(e)); });
     return r.json();
   })
   .then(function(data) {
     if(ctOrb) ctOrb.classList.remove('act');
-    if(data.text && data.text.trim().length > 1) {
+    // Status-Nachricht entfernen
+    var msgs = document.getElementById('ctmsg');
+    if(msgs && msgs.lastChild) msgs.removeChild(msgs.lastChild);
+
+    if(data.text && data.text.trim().length > 0) {
       var text = data.text.trim();
-      goTo('ct');
-      setTimeout(function() {
-        addMsg(text, true);
-        callNova(text);
-      }, 100);
+      addMsg(text, true);
+      callNova(text);
+    } else {
+      addMsg('Kein Text erkannt – nochmal versuchen!', false);
     }
   })
   .catch(function(err) {
     if(ctOrb) ctOrb.classList.remove('act');
+    var msgs = document.getElementById('ctmsg');
+    if(msgs && msgs.lastChild) msgs.removeChild(msgs.lastChild);
     console.error('Whisper error:', err);
-    startBrowserSpeech();
+    addMsg('Spracherkennung fehlgeschlagen: ' + err.message, false);
   });
 }
 
 function startBrowserSpeech() {
+  // Fallback fuer Desktop
   if(!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) return;
   var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  var r = new SR(); r.lang='de-DE'; r.interimResults=false; r.start();
+  var r = new SR(); r.lang='de-DE'; r.interimResults=false;
+  r.start();
   r.onresult = function(e) {
     var text = e.results[0][0].transcript;
     addMsg(text, true);
