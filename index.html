@@ -543,12 +543,40 @@ html, body { height: 100%; background: #040608; font-family: 'DM Sans', sans-ser
         <div class="mcv" id="kcdsp">420 / 1.800 kcal</div>
       </div>
       <div class="mctr"><div class="mcf" id="mcfill" style="width:23%"></div></div>
-      <div class="mcnums">
-        <div class="mci"><div class="mcival" style="color:#5DFFB8" id="mP">28g</div><div class="mcisub" id="mPS">/ 150g</div><div class="mcilbl">Protein</div></div>
-        <div class="mci"><div class="mcival" style="color:#7C6FE0" id="mC">32g</div><div class="mcisub" id="mCS">/ 200g</div><div class="mcilbl">Carbs</div></div>
-        <div class="mci"><div class="mcival" style="color:#F0A050" id="mF">14g</div><div class="mcisub" id="mFS">/ 65g</div><div class="mcilbl">Fett</div></div>
-        <div class="mci"><div class="mcival" style="color:var(--t2)" id="mR">1.380</div><div class="mcisub">kcal</div><div class="mcilbl">noch frei</div></div>
+      <!-- Makro-Kreise -->
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px;">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+          <div style="position:relative;width:64px;height:64px;">
+            <canvas id="ringP" width="64" height="64"></canvas>
+            <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+              <div style="font-size:12px;font-weight:700;color:#5DFFB8;" id="mP">28g</div>
+              <div style="font-size:8px;color:var(--t3);" id="mPS">/ 150g</div>
+            </div>
+          </div>
+          <div style="font-size:10px;color:var(--t2);font-weight:500;">Protein</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+          <div style="position:relative;width:64px;height:64px;">
+            <canvas id="ringC" width="64" height="64"></canvas>
+            <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+              <div style="font-size:12px;font-weight:700;color:#7C6FE0;" id="mC">32g</div>
+              <div style="font-size:8px;color:var(--t3);" id="mCS">/ 200g</div>
+            </div>
+          </div>
+          <div style="font-size:10px;color:var(--t2);font-weight:500;">Carbs</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+          <div style="position:relative;width:64px;height:64px;">
+            <canvas id="ringF" width="64" height="64"></canvas>
+            <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+              <div style="font-size:12px;font-weight:700;color:#F0A050;" id="mF">14g</div>
+              <div style="font-size:8px;color:var(--t3);" id="mFS">/ 65g</div>
+            </div>
+          </div>
+          <div style="font-size:10px;color:var(--t2);font-weight:500;">Fett</div>
+        </div>
       </div>
+      <div style="text-align:center;margin-top:6px;font-size:11px;color:var(--t3);">Noch frei: <span id="mR" style="color:var(--t);font-weight:600;">1.380</span> kcal</div>
     </div>
     <div class="ncs">
       <div class="ncc">
@@ -1708,21 +1736,62 @@ function makeSVGOrb(size, id) {
 }
 
 // SYNC MACROS
+function drawMacroRing(canvasId, value, total, color) {
+  var canvas = document.getElementById(canvasId);
+  if(!canvas) return;
+  var ctx = canvas.getContext('2d');
+  var size = 64, cx = 32, cy = 32, r = 26, lw = 6;
+  ctx.clearRect(0,0,size,size);
+  // Background ring
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI*2);
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.lineWidth = lw;
+  ctx.stroke();
+  // Progress ring
+  var pct = Math.min(value / Math.max(total,1), 1);
+  var startAngle = -Math.PI/2;
+  var endAngle = startAngle + pct * Math.PI * 2;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, startAngle, endAngle);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lw;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+  // Over 100%: red warning arc
+  if(pct >= 1) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, startAngle, startAngle + 0.3);
+    ctx.strokeStyle = '#FF4444';
+    ctx.lineWidth = lw;
+    ctx.stroke();
+  }
+}
+
 function syncMacros() {
   var c = S.todayConsumed;
   var total = S.tKcal + S.bonusKcal;
+  // Text-Updates
   document.getElementById('mP').textContent = c.p + 'g';
   document.getElementById('mPS').textContent = '/ ' + S.tP + 'g';
   document.getElementById('mC').textContent = c.c + 'g';
   document.getElementById('mCS').textContent = '/ ' + S.tC + 'g';
   document.getElementById('mF').textContent = c.f + 'g';
   document.getElementById('mFS').textContent = '/ ' + S.tF + 'g';
-  document.getElementById('kcdsp').textContent = c.kcal + ' / ' + total + ' kcal';
-  document.getElementById('mR').textContent = (total - c.kcal).toLocaleString('de');
+  document.getElementById('kcdsp').textContent = c.kcal.toLocaleString('de') + ' / ' + total.toLocaleString('de') + ' kcal';
+  var remaining = Math.max(0, total - c.kcal);
+  document.getElementById('mR').textContent = remaining.toLocaleString('de');
+  // Fortschrittsbalken
   var pct = Math.round(c.kcal / total * 100);
   document.getElementById('mcfill').style.width = Math.min(pct, 100) + '%';
-  if(S.bonusKcal > 0) {
-    document.getElementById('novaHomeHint').textContent = 'Training heute: +' + S.bonusKcal + ' kcal Bonus freigeschaltet!';
+  // Makro-Ringe zeichnen
+  drawMacroRing('ringP', c.p, S.tP, '#5DFFB8');
+  drawMacroRing('ringC', c.c, S.tC, '#7C6FE0');
+  drawMacroRing('ringF', c.f, S.tF, '#F0A050');
+  // Training Bonus Hinweis
+  var hint = document.getElementById('novaHomeHint');
+  if(hint && S.bonusKcal > 0) {
+    hint.textContent = 'Training heute: +' + S.bonusKcal + ' kcal Bonus freigeschaltet!';
   }
 }
 
@@ -1926,12 +1995,12 @@ function renderTodayMeals() {
     var r = getRecipe(plan[i]);
     if(!r) continue;
     var labels = ['Fruehstueck - 07:30','Mittagessen - 12:30','Abendessen - 18:30'];
-    var done = i === 0;
+    var done = !!confirmedMeals[r.id] || i === 0;
     html += '<div class="mlcd" onclick="showMeal(\'' + r.id + '\')">'
       + '<div class="mlem">' + r.emoji + '</div>'
       + '<div class="mlif">'
       + '<div class="mltm">' + labels[i] + '</div>'
-      + '<div class="mlnm">' + r.name + '</div>'
+      + '<div class="mlnm">' + r.name + (done ? ' <span style="color:var(--g);font-size:10px;">✓</span>' : '') + '</div>'
       + '<div class="mlkc">' + r.kcal + ' kcal &middot; ' + r.p + 'g P &middot; ' + r.c + 'g C &middot; ' + r.f + 'g F</div>'
       + '</div>'
       + '<div class="mlck ' + (done?'dn':'') + '">'
@@ -2102,19 +2171,34 @@ function logWeight() {
   if(!inp || !inp.value) return;
   var w = parseFloat(inp.value.replace(',','.'));
   if(isNaN(w) || w < 30 || w > 300) return;
-  var fb = document.getElementById('weightFeedback');
-  var prev = NOVA_DATA.diary[NOVA_DATA.diary.length-1].weight;
+
+  // Letzten Tagebuch-Eintrag mit neuem Gewicht aktualisieren
+  var diary = NOVA_DATA.diary;
+  diary[diary.length-1].weight = w;
+
+  // Zweites Diary-Array (falls doppelt vorhanden)
+  if(NOVA_DATA.diary2) NOVA_DATA.diary2[NOVA_DATA.diary2.length-1].weight = w;
+
+  var prev = diary.length > 1 ? diary[diary.length-2].weight : w;
   var diff = (w - prev).toFixed(1);
   var msg = '';
   if(parseFloat(diff) < 0) {
-    msg = '✅ Super! ' + Math.abs(diff) + ' kg weniger als gestern. Du bist auf Kurs!';
-  } else if(parseFloat(diff) > 0) {
-    msg = 'ℹ️ ' + diff + ' kg mehr als gestern – das sind meist Wasserschwankungen, kein Grund zur Sorge.';
+    msg = '✅ ' + Math.abs(diff) + ' kg weniger als gestern – du bist auf Kurs!';
+  } else if(parseFloat(diff) > 0.2) {
+    msg = 'ℹ️ ' + diff + ' kg mehr als gestern – meist nur Wasserschwankungen, kein Grund zur Sorge.';
   } else {
-    msg = '✓ Gleiches Gewicht wie gestern – stabil und solide!';
+    msg = '✓ Stabiles Gewicht – konstant und solide!';
   }
+
+  var fb = document.getElementById('weightFeedback');
   if(fb) { fb.style.display='block'; fb.textContent = msg; }
+
+  // Chart neu zeichnen
+  drawWeightChart();
+
+  // Eingabefeld leeren
   inp.value = '';
+
   // Nova-Antwort im Chat
   addMsg('Gewicht heute: ' + w.toFixed(1).replace('.',',') + ' kg eingetragen. ' + msg, false);
 }
