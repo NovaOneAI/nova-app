@@ -650,7 +650,7 @@ html, body { height: 100%; background: #040608; font-family: 'DM Sans', sans-ser
   <div class="ctmsg" id="ctmsg"></div>
   <div class="ctin">
     <input class="ctinp" id="ctinp" placeholder="Nova etwas fragen..." onkeydown="if(event.key==='Enter')sendMsg()">
-    <button class="vcbtn" onclick="startVoice()"><svg width="13" height="17" viewBox="0 0 13 17" fill="none"><rect x="3.5" y="0.5" width="6" height="10" rx="3" fill="white" opacity="0.7"/><path d="M1 8.5c0 3.04 2.46 5.5 5.5 5.5S12 11.54 12 8.5" stroke="white" stroke-width="1.6" fill="none" stroke-linecap="round"/><line x1="6.5" y1="14" x2="6.5" y2="16.5" stroke="white" stroke-width="1.6" stroke-linecap="round" opacity="0.7"/></svg></button>
+    <button class="vcbtn" id="ctVoiceBtn" onmousedown="ctStartRecord()" onmouseup="ctStopRecord()" ontouchstart="ctStartRecord()" ontouchend="ctStopRecord()"><svg width="13" height="17" viewBox="0 0 13 17" fill="none"><rect x="3.5" y="0.5" width="6" height="10" rx="3" fill="white" opacity="0.7"/><path d="M1 8.5c0 3.04 2.46 5.5 5.5 5.5S12 11.54 12 8.5" stroke="white" stroke-width="1.6" fill="none" stroke-linecap="round"/><line x1="6.5" y1="14" x2="6.5" y2="16.5" stroke="white" stroke-width="1.6" stroke-linecap="round" opacity="0.7"/></svg></button>
     <button class="sndbtn" onclick="sendMsg()"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M12 2L6 8M12 2L8.5 12L6 8M12 2L2 5.5L6 8" stroke="#000" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
   </div>
 </div>
@@ -3152,116 +3152,335 @@ function playEndSound() {
   } catch(e) {}
 }
 
-function startHold(e) {
-  if(e) e.preventDefault();
-  if(holdActive) return;
-  holdActive = true;
-  holdStartTime = Date.now();
-  playStartSound();
-  var orb = document.getElementById('hmOrb');
-  orb.classList.add('act');
-  var hint = document.getElementById('novaHoldHint');
-  if(hint) hint.textContent = 'Nova hoert zu... loslassen wenn fertig';
+// Chat-Screen Voice Button (Press-and-Hold fuer Whisper)
+function ctStartRecord() {
+  var btn = document.getElementById('ctVoiceBtn');
+  if(btn) btn.style.background = 'var(--g)';
+  startVoiceRecording();
 }
 
-function endHold(e) {
-  if(e) e.preventDefault();
-  if(!holdActive) return;
-  holdActive = false;
-  var heldMs = Date.now() - holdStartTime;
-  var orb = document.getElementById('hmOrb');
-  var hint = document.getElementById('novaHoldHint');
-
-  if(heldMs < 350) {
-    // Zu kurz gehalten - kein Wechsel, einfach zuruecksetzen
-    orb.classList.remove('act');
-    if(hint) hint.textContent = 'Gedrueckt halten zum Sprechen';
-    return;
-  }
-
-  playEndSound();
-  // Erst jetzt - nach dem Loslassen - wechselt die App ins Chat-Log
-  setTimeout(function(){
-    orb.classList.remove('act');
-    if(hint) hint.textContent = 'Gedrueckt halten zum Sprechen';
-    goTo('ct');
-  }, 150);
-}
-
-function cancelHold() {
-  if(!holdActive) return;
-  holdActive = false;
-  var orb = document.getElementById('hmOrb');
-  var hint = document.getElementById('novaHoldHint');
-  orb.classList.remove('act');
-  if(hint) hint.textContent = 'Gedrueckt halten zum Sprechen';
+function ctStopRecord() {
+  var btn = document.getElementById('ctVoiceBtn');
+  if(btn) btn.style.background = '';
+  stopVoiceRecording();
 }
 
 (function setupNovaHoldButton(){
   var btn = document.getElementById('novaHoldBtn');
   if(!btn) return;
-  // Touch events
   btn.addEventListener('touchstart', startHold, { passive: false });
   btn.addEventListener('touchend', endHold, { passive: false });
   btn.addEventListener('touchcancel', cancelHold, { passive: false });
-  // Mouse events (Desktop-Test)
   btn.addEventListener('mousedown', startHold);
   btn.addEventListener('mouseup', endHold);
   btn.addEventListener('mouseleave', function(){ if(holdActive) cancelHold(); });
 })();
 
-function startVoice() {
-  var ctOrb = document.getElementById('ctOrb');
-  ctOrb.classList.add('act');
-  if(!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-    document.getElementById('ctinp').focus();
-    setTimeout(function(){ ctOrb.classList.remove('act'); }, 1500);
-    return;
+// ============================================================
+// API KEYS
+// ============================================================
+var OPENAI_KEY = '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';
+var SPOONACULAR_KEY = '80405d87c1024b4ab8064f82e88b5412';
+
+// Gespraechsverlauf fuer GPT-4o (letzte 8 Nachrichten)
+var chatHistory = [];
+
+// ============================================================
+// FUNCTION CALLING – Tool-Definitionen
+// ============================================================
+var NOVA_TOOLS = [
+  {
+    type: 'function',
+    function: {
+      name: 'log_training',
+      description: 'Trainingseinheit eintragen und Kalorienbonus berechnen',
+      parameters: {
+        type: 'object',
+        properties: {
+          type: { type: 'string', description: 'Trainingsart z.B. Krafttraining, HIIT, Laufen, Radfahren, Schwimmen, Yoga, Cardio' },
+          duration_minutes: { type: 'number', description: 'Dauer in Minuten' },
+          calories_burned: { type: 'number', description: 'Verbrannte Kalorien (optional, Nova berechnet selbst)' }
+        },
+        required: ['type', 'duration_minutes']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'log_weight',
+      description: 'Koerpergewicht eintragen',
+      parameters: {
+        type: 'object',
+        properties: {
+          weight_kg: { type: 'number', description: 'Gewicht in kg' }
+        },
+        required: ['weight_kg']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'log_meal',
+      description: 'Gegessene Mahlzeit oder Lebensmittel eintragen und Makros aktualisieren',
+      parameters: {
+        type: 'object',
+        properties: {
+          meal_description: { type: 'string', description: 'Beschreibung der Mahlzeit' },
+          kcal: { type: 'number', description: 'Geschaetzte Kalorien' },
+          protein_g: { type: 'number', description: 'Protein in Gramm' },
+          carbs_g: { type: 'number', description: 'Kohlenhydrate in Gramm' },
+          fat_g: { type: 'number', description: 'Fett in Gramm' }
+        },
+        required: ['meal_description', 'kcal']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'update_shopping_list',
+      description: 'Einkaufsliste anpassen – Artikel entfernen oder Menge aendern',
+      parameters: {
+        type: 'object',
+        properties: {
+          action: { type: 'string', enum: ['remove', 'reduce', 'add'], description: 'Aktion' },
+          item_name: { type: 'string', description: 'Name des Artikels' },
+          reason: { type: 'string', description: 'Grund der Aenderung' }
+        },
+        required: ['action', 'item_name']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_weekly_plan',
+      description: 'Wochenplan erstellen basierend auf Nutzerprofil und Praeferenzen',
+      parameters: {
+        type: 'object',
+        properties: {
+          allergies: { type: 'string', description: 'Allergien oder Unvertraeglichkeiten' },
+          preferences: { type: 'string', description: 'Essensvorlieben oder Abneigungen' },
+          diet_type: { type: 'string', description: 'Ernaehrungstyp z.B. normal, vegetarisch, vegan' }
+        },
+        required: []
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'confirm_weekly_plan',
+      description: 'Wochenplan bestaetigen und Einkaufsliste erstellen',
+      parameters: {
+        type: 'object',
+        properties: {
+          confirmed: { type: 'boolean', description: 'User hat Plan bestaetigt' }
+        },
+        required: ['confirmed']
+      }
+    }
   }
-  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  var r = new SR(); r.lang = 'de-DE'; r.interimResults = false; r.start();
-  document.getElementById('ctinp').placeholder = 'Hoere zu...';
-  r.onresult = function(e) {
-    document.getElementById('ctinp').value = e.results[0][0].transcript;
-    document.getElementById('ctinp').placeholder = 'Nova etwas fragen...';
-    ctOrb.classList.remove('act');
-  };
-  r.onerror = function() { document.getElementById('ctinp').placeholder = 'Nova etwas fragen...'; ctOrb.classList.remove('act'); };
-  r.onend = function() { ctOrb.classList.remove('act'); };
+];
+
+// ============================================================
+// FUNCTION EXECUTION – Tool-Ausfuehrung
+// ============================================================
+function executeTool(name, args) {
+  if(name === 'log_training') {
+    var perMin = { krafttraining:5.5, hiit:9.0, laufen:10.0, radfahren:8.0, schwimmen:8.5, yoga:3.5, cardio:7.0 };
+    var typeKey = args.type.toLowerCase().replace(/\s/g,'');
+    var rate = perMin[typeKey] || perMin[typeKey.indexOf('kraft')>=0?'krafttraining':typeKey.indexOf('lauf')>=0?'laufen':'cardio'] || 7.0;
+    var burned = args.calories_burned || Math.round(rate * args.duration_minutes);
+    S.bonusKcal = burned;
+    syncMacros();
+    renderTodayMeals();
+    return 'Training eingetragen: ' + args.type + ' ' + args.duration_minutes + ' Min = ' + burned + ' kcal Bonus freigeschaltet!';
+  }
+
+  if(name === 'log_weight') {
+    var w = args.weight_kg;
+    var diary = NOVA_DATA.diary;
+    diary[diary.length-1].weight = w;
+    drawWeightChart();
+    return 'Gewicht ' + w.toFixed(1).replace('.',',') + ' kg eingetragen und Grafik aktualisiert.';
+  }
+
+  if(name === 'log_meal') {
+    S.todayConsumed.kcal += Math.round(args.kcal || 0);
+    S.todayConsumed.p += Math.round(args.protein_g || 0);
+    S.todayConsumed.c += Math.round(args.carbs_g || 0);
+    S.todayConsumed.f += Math.round(args.fat_g || 0);
+    syncMacros();
+    return 'Mahlzeit eingetragen: ' + args.meal_description + ' (' + Math.round(args.kcal) + ' kcal). Makros aktualisiert!';
+  }
+
+  if(name === 'update_shopping_list') {
+    var list = NOVA_DATA.shoppingList;
+    var found = false;
+    for(var ci=0; ci<list.categories.length; ci++) {
+      var items = list.categories[ci].items;
+      for(var ii=0; ii<items.length; ii++) {
+        if(items[ii].name.toLowerCase().indexOf(args.item_name.toLowerCase()) >= 0) {
+          if(args.action === 'remove') {
+            items.splice(ii, 1);
+          } else if(args.action === 'reduce') {
+            items[ii].amount = '1x (reduziert)';
+          }
+          found = true;
+          break;
+        }
+      }
+      if(found) break;
+    }
+    if(document.getElementById('shoppingContent')) renderShoppingList();
+    return found ? args.item_name + ' aus der Einkaufsliste ' + (args.action==='remove'?'entfernt':'reduziert') + '!' : args.item_name + ' war nicht auf der Liste.';
+  }
+
+  if(name === 'create_weekly_plan') {
+    fetchWeeklyPlan(args);
+    return 'Ich erstelle deinen Wochenplan mit Spoonacular – das dauert einen kurzen Moment!';
+  }
+
+  if(name === 'confirm_weekly_plan') {
+    confirmPlan();
+    return 'Wochenplan bestaetigt! Ich erstelle jetzt deine Einkaufsliste.';
+  }
+
+  return 'Aktion ausgefuehrt.';
 }
 
-function getReply(msg) {
-  var m = msg.toLowerCase();
-  var remaining = (S.tKcal + S.bonusKcal) - S.todayConsumed.kcal;
+// ============================================================
+// SPOONACULAR – Wochenplan erstellen
+// ============================================================
+function fetchWeeklyPlan(prefs) {
+  addMsg('Ich suche passende Rezepte fuer dich... ⏳', false);
+  var diet = prefs && prefs.diet_type === 'vegetarisch' ? '&diet=vegetarian' : '';
+  var exclude = prefs && prefs.allergies ? '&excludeIngredients=' + encodeURIComponent(prefs.allergies) : '';
+  var targetCal = S.tKcal || 1800;
+  var url = 'https://api.spoonacular.com/mealplanner/generate?timeFrame=week&targetCalories=' + targetCal + diet + exclude + '&apiKey=' + SPOONACULAR_KEY;
 
-  if(m.indexOf('hunger')>=0 || m.indexOf('snack')>=0 || m.indexOf('noch essen')>=0)
-    return 'Du hast heute noch ' + remaining + ' kcal uebrig! Magerquark mit Beeren (185 kcal, 22g Protein) waere ideal - viel Protein und haelt lange satt.';
-  if(m.indexOf('pizza')>=0 || m.indexOf('burger')>=0 || m.indexOf('fast food')>=0 || m.indexOf('doener')>=0)
-    return 'Das ist kein Drama! Sag mir wieviele Stuecke oder die Menge - ich rechne es direkt in deinen Plan ein und schaue was der Tag noch hergibt.';
-  if(m.indexOf('sport')>=0 || m.indexOf('training')>=0 || m.indexOf('gym')>=0 || m.indexOf('hiit')>=0)
-    return 'Toll! Wechsle mal in den Training-Tab - dort kann ich dir genau ausrechnen wie viele Bonus-Kalorien du dir heute verdient hast!';
-  if(m.indexOf('protein')>=0 || m.indexOf('eiweis')>=0)
-    return 'Protein ist dein wichtigster Makronaehrstoff! Ziel: ' + S.tP + 'g pro Tag. Du bist heute bei ' + S.todayConsumed.p + 'g. Haehnchen, Lachs, Eier und Magerquark sind deine besten Quellen.';
-  if(m.indexOf('cheat')>=0 || m.indexOf('suess')>=0 || m.indexOf('schokolade')>=0)
-    return 'Ein Cheat Day darf sein! Wichtig ist nur, dass du danach wieder auf Kurs gehst - was du die letzten 2 Wochen super gemacht hast! Ein Tag aendert nichts am grossen Bild.';
-  if(m.indexOf('tagebuch')>=0 || m.indexOf('verlauf')>=0 || m.indexOf('fortschritt')>=0)
-    return 'Schau mal in deinen Tagebuch-Tab - da siehst du die letzten 2 Wochen mit allen Details und meine persoenlichen Feedbacks fuer jeden Tag!';
-  if(m.indexOf('rezept')>=0 || m.indexOf('kochen')>=0 || m.indexOf('essen')>=0)
-    return 'Ich empfehle dir heute: ' + NOVA_DATA.recipes[3].name + ' fuer Mittag und ' + NOVA_DATA.recipes[4].name + ' fuer Abend. Klick auf eine Mahlzeit im Tagesplan fuer das vollstaendige Rezept!';
-  if(m.indexOf('gewicht')>=0 || m.indexOf('abgenommen')>=0 || m.indexOf('fortschritt')>=0)
-    return 'In den letzten 2 Wochen hast du 2,0 kg abgenommen - von 83,2 auf 81,2 kg! Das ist im optimalen Bereich. Weiter so!';
-  if(m.indexOf('motivat')>=0 || m.indexOf('aufgeben')>=0 || m.indexOf('schwer')>=0)
-    return 'Du machst das wirklich gut! 2 kg in 2 Wochen sind ein echter Erfolg. Denk immer an dein Warum - ob Urlaub, besonderer Anlass oder einfach besser fuehlen. Jeder Tag zaehlt!';
-
-  var defaults = [
-    'Gute Frage! Lass mich das kurz fuer dich berechnen...',
-    'Klar, kein Problem! Sag mir mehr und ich passe deinen Plan sofort an.',
-    'Ich bin hier um dir zu helfen! Was genau moechtest du wissen?',
-    'Sehr guter Ansatz! Du denkst schon wie ein Ernaehrungsprofi.'
-  ];
-  return defaults[Math.floor(Math.random() * defaults.length)];
+  fetch(url)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if(data.week) {
+        buildPlanFromSpoonacular(data.week);
+      } else {
+        addMsg('Ich habe passende Rezepte gefunden! Schau dir den Wochenplan-Tab an.', false);
+        goTo('planPreview');
+      }
+    })
+    .catch(function(err) {
+      console.error('Spoonacular error:', err);
+      addMsg('Ich habe einen Wochenplan-Vorschlag fuer dich vorbereitet – schau in den Plan-Tab!', false);
+      goTo('planPreview');
+    });
 }
 
+function buildPlanFromSpoonacular(weekData) {
+  var dayNames = ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag'];
+  var days = Object.keys(weekData);
+  var planDays = [];
+
+  for(var i=0; i<Math.min(days.length, 7); i++) {
+    var dayData = weekData[days[i]];
+    var meals = dayData.meals || [];
+    var mealNames = meals.map(function(m) { return m.title || 'Rezept'; });
+    var isTraining = S.trainingDays && S.trainingDays.indexOf(dayNames[i]) >= 0;
+
+    planDays.push({
+      day: dayNames[i],
+      meals: [
+        mealNames[0] || 'Fruehstueck',
+        mealNames[1] || 'Mittagessen',
+        mealNames[2] || 'Abendessen'
+      ],
+      training: isTraining,
+      trainingNote: isTraining ? '+' + S.bonusKcal + ' kcal Trainingsbonus' : null,
+      nutrients: dayData.nutrients
+    });
+  }
+
+  NOVA_DATA.nextWeekProposal.days = planDays;
+  NOVA_DATA.nextWeekProposal.generatedOn = 'Gerade erstellt';
+
+  addMsg('Dein Wochenplan ist fertig! Ich habe ihn auf deine ' + (S.tKcal||1800) + ' kcal/Tag abgestimmt. Schau ihn dir an und sag mir wenn du etwas aendern moechtest!', false);
+
+  // Einkaufsliste aus Zutaten generieren
+  buildShoppingListFromPlan(weekData);
+
+  goTo('planPreview');
+  renderPlanPreview();
+}
+
+function buildShoppingListFromPlan(weekData) {
+  var allMealIds = [];
+  var days = Object.keys(weekData);
+  for(var i=0; i<days.length; i++) {
+    var meals = weekData[days[i]].meals || [];
+    for(var j=0; j<meals.length; j++) {
+      if(meals[j].id) allMealIds.push(meals[j].id);
+    }
+  }
+  if(allMealIds.length === 0) return;
+
+  var url = 'https://api.spoonacular.com/mealplanner/shopping-list/items?apiKey=' + SPOONACULAR_KEY;
+  // Spoonacular Shopping List via recipe IDs
+  var idsStr = allMealIds.slice(0,10).join(',');
+  fetch('https://api.spoonacular.com/recipes/informationBulk?ids=' + idsStr + '&includeNutrition=false&apiKey=' + SPOONACULAR_KEY)
+    .then(function(r) { return r.json(); })
+    .then(function(recipes) {
+      var ingMap = {};
+      for(var ri=0; ri<recipes.length; ri++) {
+        var ings = recipes[ri].extendedIngredients || [];
+        for(var ii=0; ii<ings.length; ii++) {
+          var key = ings[ii].name.toLowerCase();
+          if(!ingMap[key]) {
+            ingMap[key] = { name: ings[ii].nameClean || ings[ii].name, amount: ings[ii].amount, unit: ings[ii].unit || '' };
+          } else {
+            ingMap[key].amount += ings[ii].amount;
+          }
+        }
+      }
+      // Kategorisieren
+      var produceItems = [], meatItems = [], dairyItems = [], dryItems = [], otherItems = [];
+      var produce = ['tomate','salat','spinat','brokkoli','zucchini','paprika','zwiebel','knoblauch','karotte','gurke','apfel','banane','beere'];
+      var meat = ['haehnchen','huh','lachs','fisch','rind','schwein','thunfisch','pute'];
+      var dairy = ['milch','joghurt','quark','kaese','ei','butter','sahne'];
+      var dry = ['nudel','reis','quinoa','hafer','linsen','bohnen','kichererbsen','mehl','brot'];
+
+      Object.keys(ingMap).forEach(function(key) {
+        var item = ingMap[key];
+        var displayAmt = Math.round(item.amount * 10) / 10;
+        var entry = { name: item.name.charAt(0).toUpperCase() + item.name.slice(1), amount: displayAmt + (item.unit ? ' ' + item.unit : ' St.'), source: 'Wochenplan', isPantryRefill: false };
+
+        if(produce.some(function(p){ return key.indexOf(p)>=0; })) produceItems.push(entry);
+        else if(meat.some(function(p){ return key.indexOf(p)>=0; })) meatItems.push(entry);
+        else if(dairy.some(function(p){ return key.indexOf(p)>=0; })) dairyItems.push(entry);
+        else if(dry.some(function(p){ return key.indexOf(p)>=0; })) dryItems.push(entry);
+        else otherItems.push(entry);
+      });
+
+      if(produceItems.length || meatItems.length || dairyItems.length || dryItems.length) {
+        NOVA_DATA.shoppingList.categories = [];
+        if(produceItems.length) NOVA_DATA.shoppingList.categories.push({ icon:'🥦', name:'Obst & Gemuese', items:produceItems });
+        if(meatItems.length) NOVA_DATA.shoppingList.categories.push({ icon:'🥩', name:'Fleisch & Fisch', items:meatItems });
+        if(dairyItems.length) NOVA_DATA.shoppingList.categories.push({ icon:'🥛', name:'Milchprodukte & Eier', items:dairyItems });
+        if(dryItems.length) NOVA_DATA.shoppingList.categories.push({ icon:'🌾', name:'Trockenware', items:dryItems });
+        if(otherItems.length) NOVA_DATA.shoppingList.categories.push({ icon:'🛒', name:'Sonstiges', items:otherItems });
+        NOVA_DATA.shoppingList.novaNote = 'Einkaufsliste aus deinem Wochenplan erstellt – ' + Object.keys(ingMap).length + ' Artikel sortiert.';
+      }
+    })
+    .catch(function(err) {
+      console.error('Shopping list error:', err);
+    });
+}
+
+// ============================================================
+// OPENAI CHAT – echte KI-Antworten
+// ============================================================
 function addMsg(text, isUser) {
   var msgs = document.getElementById('ctmsg');
   var t = new Date();
@@ -3279,17 +3498,283 @@ function sendMsg() {
   if(!text) return;
   inp.value = '';
   addMsg(text, true);
+  callNova(text);
+}
+
+function callNova(userText) {
   var ctOrb = document.getElementById('ctOrb');
   ctOrb.classList.add('act');
+
+  // Typing Indicator
   var msgs = document.getElementById('ctmsg');
   var td = document.createElement('div');
-  td.className = 'msg nv'; td.id = 'typ';
+  td.className = 'msg nv'; td.id = 'typingIndicator';
   td.innerHTML = '<div class="typbbl"><div class="tyd"></div><div class="tyd"></div><div class="tyd"></div></div>';
   msgs.appendChild(td); msgs.scrollTop = msgs.scrollHeight;
-  setTimeout(function(){
+
+  // Nutzerprofil als Kontext
+  var userCtx = buildUserContext();
+  var systemPrompt = NOVA_SYSTEM_PROMPT + '\n\n' + userCtx;
+
+  // Verlauf aktualisieren
+  chatHistory.push({ role: 'user', content: userText });
+  if(chatHistory.length > 16) chatHistory = chatHistory.slice(-16);
+
+  fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1000,
+      system: systemPrompt,
+      messages: chatHistory
+    })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
     td.remove(); ctOrb.classList.remove('act');
-    addMsg(getReply(text), false);
-  }, 900 + Math.random() * 700);
+
+    var replyText = '';
+    if(data.content && data.content[0] && data.content[0].text) {
+      replyText = data.content[0].text;
+    } else {
+      replyText = 'Entschuldigung, ich hatte kurz ein technisches Problem. Versuch es nochmal!';
+    }
+
+    // Tool-Erkennung aus Text (einfache Keyword-Heuristik)
+    detectAndExecuteAction(userText, replyText);
+
+    chatHistory.push({ role: 'assistant', content: replyText });
+    addMsg(replyText, false);
+
+    // Nova spricht die Antwort
+    speakNovaReply(replyText);
+  })
+  .catch(function(err) {
+    td.remove(); ctOrb.classList.remove('act');
+    console.error('API error:', err);
+    // Fallback auf lokale Antworten
+    addMsg(getFallbackReply(userText), false);
+  });
+}
+
+// Einfache Aktions-Erkennung aus User-Text
+function detectAndExecuteAction(userText, novaReply) {
+  var m = userText.toLowerCase();
+
+  // Training
+  var durationMatch = m.match(/(\d+)\s*(minuten?|min|stunden?|std)/);
+  var duration = durationMatch ? parseInt(durationMatch[1]) : 45;
+  if(m.indexOf('stund') >= 0 && durationMatch) duration = parseInt(durationMatch[1]) * 60;
+
+  if(m.indexOf('krafttraining') >= 0 || m.indexOf('kraft training') >= 0) {
+    executeTool('log_training', { type:'Krafttraining', duration_minutes: duration });
+  } else if(m.indexOf('hiit') >= 0) {
+    executeTool('log_training', { type:'HIIT', duration_minutes: duration });
+  } else if(m.indexOf('gelaufen') >= 0 || m.indexOf('laufen') >= 0 || m.indexOf('joggen') >= 0) {
+    executeTool('log_training', { type:'Laufen', duration_minutes: duration });
+  } else if(m.indexOf('fahrrad') >= 0 || m.indexOf('radfahren') >= 0 || m.indexOf('cycling') >= 0) {
+    executeTool('log_training', { type:'Radfahren', duration_minutes: duration });
+  } else if(m.indexOf('schwimm') >= 0) {
+    executeTool('log_training', { type:'Schwimmen', duration_minutes: duration });
+  } else if(m.indexOf('yoga') >= 0) {
+    executeTool('log_training', { type:'Yoga', duration_minutes: duration });
+  }
+
+  // Gewicht
+  var weightMatch = m.match(/(\d{2,3}[.,]?\d{0,2})\s*kg/);
+  if(weightMatch && (m.indexOf('wiege') >= 0 || m.indexOf('gewicht') >= 0 || m.indexOf('gewogen') >= 0)) {
+    var w = parseFloat(weightMatch[1].replace(',','.'));
+    if(w > 30 && w < 300) executeTool('log_weight', { weight_kg: w });
+  }
+
+  // Pizza / Cheat Day / Mahlzeit
+  var kcalMatch = m.match(/(\d{3,4})\s*(kcal|kalorien)/);
+  if(kcalMatch) {
+    var kcal = parseInt(kcalMatch[1]);
+    executeTool('log_meal', { meal_description: userText, kcal: kcal, protein_g: Math.round(kcal*0.2/4), carbs_g: Math.round(kcal*0.5/4), fat_g: Math.round(kcal*0.3/9) });
+  }
+
+  // Einkaufsliste
+  var pantryItems = ['salz','pfeffer','oel','olivenoel','essig','zucker','mehl'];
+  pantryItems.forEach(function(item) {
+    if(m.indexOf(item) >= 0 && (m.indexOf('hab') >= 0 || m.indexOf('noch') >= 0 || m.indexOf('zuhause') >= 0)) {
+      executeTool('update_shopping_list', { action:'remove', item_name: item, reason:'Zuhause vorhanden' });
+    }
+  });
+
+  // Wochenplan erstellen
+  if((m.indexOf('wochenplan') >= 0 || m.indexOf('plane') >= 0 || m.indexOf('erstell') >= 0) && m.indexOf('plan') >= 0) {
+    var diet = m.indexOf('vegetarisch') >= 0 ? 'vegetarisch' : 'normal';
+    fetchWeeklyPlan({ diet_type: diet });
+  }
+}
+
+function getFallbackReply(msg) {
+  var m = msg.toLowerCase();
+  if(m.indexOf('pizza')>=0 || m.indexOf('burger')>=0) return 'Kein Drama – ein Cheat-Moment macht den Plan nicht kaputt. Was hast du gegessen und wie viel?';
+  if(m.indexOf('sport')>=0 || m.indexOf('training')>=0) return 'Super! Welche Sportart und wie lange? Ich rechne dir den Kalorienbonus direkt aus.';
+  if(m.indexOf('hunger')>=0) return 'Du hast heute noch ' + Math.max(0, S.tKcal - S.todayConsumed.kcal) + ' kcal uebrig. Magerquark mit Beeren waere ideal!';
+  return 'Ich bin kurz nicht erreichbar – versuch es gleich nochmal!';
+}
+
+// ============================================================
+// VOICE – Whisper STT + OpenAI TTS
+// ============================================================
+var mediaRecorder = null;
+var audioChunks = [];
+var isRecording = false;
+
+function startVoiceRecording() {
+  if(isRecording) return;
+  isRecording = true;
+  audioChunks = [];
+
+  navigator.mediaDevices.getUserMedia({ audio: true })
+    .then(function(stream) {
+      mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      mediaRecorder.ondataavailable = function(e) {
+        if(e.data.size > 0) audioChunks.push(e.data);
+      };
+      mediaRecorder.onstop = function() {
+        stream.getTracks().forEach(function(t){ t.stop(); });
+        transcribeAudio();
+      };
+      mediaRecorder.start();
+    })
+    .catch(function(err) {
+      console.error('Mic error:', err);
+      isRecording = false;
+      // Fallback: Browser-Spracherkennung
+      startBrowserSpeech();
+    });
+}
+
+function stopVoiceRecording() {
+  if(!isRecording) return;
+  isRecording = false;
+  if(mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop();
+  }
+}
+
+function transcribeAudio() {
+  var ctOrb = document.getElementById('ctOrb');
+  ctOrb.classList.add('act');
+  var blob = new Blob(audioChunks, { type:'audio/webm' });
+  var fd = new FormData();
+  fd.append('file', blob, 'voice.webm');
+  fd.append('model', 'whisper-1');
+  fd.append('language', 'de');
+
+  fetch('https://api.openai.com/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + OPENAI_KEY },
+    body: fd
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    ctOrb.classList.remove('act');
+    if(data.text && data.text.trim()) {
+      var text = data.text.trim();
+      addMsg(text, true);
+      callNova(text);
+    }
+  })
+  .catch(function(err) {
+    ctOrb.classList.remove('act');
+    console.error('Whisper error:', err);
+    startBrowserSpeech();
+  });
+}
+
+function startBrowserSpeech() {
+  if(!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) return;
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var r = new SR(); r.lang='de-DE'; r.interimResults=false; r.start();
+  r.onresult = function(e) {
+    var text = e.results[0][0].transcript;
+    addMsg(text, true);
+    callNova(text);
+  };
+}
+
+function speakNovaReply(text) {
+  // Kuerze den Text fuer TTS (max 200 Zeichen)
+  var ttsText = text.length > 200 ? text.substring(0, 197) + '...' : text;
+
+  fetch('https://api.openai.com/v1/audio/speech', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + OPENAI_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model:'tts-1', voice:'nova', input: ttsText, speed: 1.0 })
+  })
+  .then(function(r) { return r.blob(); })
+  .then(function(blob) {
+    var url = URL.createObjectURL(blob);
+    var audio = new Audio(url);
+    audio.play();
+    audio.onended = function() { URL.revokeObjectURL(url); };
+  })
+  .catch(function(err) {
+    console.error('TTS error:', err);
+    // Fallback: Browser-TTS
+    if(window.speechSynthesis) {
+      var utt = new SpeechSynthesisUtterance(ttsText);
+      utt.lang = 'de-DE'; utt.rate = 0.92;
+      window.speechSynthesis.speak(utt);
+    }
+  });
+}
+
+// Press-and-Hold auf dem Homescreen -> Whisper
+function startHold(e) {
+  if(e) e.preventDefault();
+  if(holdActive) return;
+  holdActive = true;
+  holdStartTime = Date.now();
+  playStartSound();
+  var orb = document.getElementById('hmOrb');
+  orb.classList.add('act');
+  var hint = document.getElementById('novaHoldHint');
+  if(hint) hint.textContent = 'Nova hoert zu... loslassen wenn fertig';
+  startVoiceRecording();
+}
+
+function endHold(e) {
+  if(e) e.preventDefault();
+  if(!holdActive) return;
+  holdActive = false;
+  var heldMs = Date.now() - holdStartTime;
+  var orb = document.getElementById('hmOrb');
+  var hint = document.getElementById('novaHoldHint');
+  orb.classList.remove('act');
+  if(hint) hint.textContent = 'Gedrueckt halten zum Sprechen';
+
+  if(heldMs < 350) {
+    stopVoiceRecording();
+    audioChunks = [];
+    isRecording = false;
+    return;
+  }
+
+  playEndSound();
+  stopVoiceRecording();
+
+  setTimeout(function() { goTo('ct'); }, 200);
+}
+
+function cancelHold() {
+  if(!holdActive) return;
+  holdActive = false;
+  isRecording = false;
+  audioChunks = [];
+  if(mediaRecorder && mediaRecorder.state !== 'inactive') {
+    try { mediaRecorder.stop(); } catch(e){}
+  }
+  var orb = document.getElementById('hmOrb');
+  var hint = document.getElementById('novaHoldHint');
+  orb.classList.remove('act');
+  if(hint) hint.textContent = 'Gedrueckt halten zum Sprechen';
 }
 
 // ============================================================
