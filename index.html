@@ -329,7 +329,8 @@ html, body { height: 100%; background: #040608; font-family: 'DM Sans', sans-ser
 .ctinp:focus { border-color:rgba(29,184,122,.3); }
 .ctinp::placeholder { color:var(--t3); }
 .sndbtn { width:40px; height:40px; border-radius:50%; background:var(--g); border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
-.vcbtn { width:40px; height:40px; border-radius:50%; background:var(--bg3); border:1px solid var(--bd); cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.vcbtn { width:52px; height:52px; border-radius:50%; background:rgba(29,184,122,0.15); border:1.5px solid rgba(29,184,122,0.4); cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:background 0.15s,transform 0.1s; }
+.vcbtn:active, .vcbtn.recording { background:rgba(29,184,122,0.4); transform:scale(0.95); border-color:var(--g); }
 
 /* ADJUST */
 .adjva { display:flex; flex-direction:column; align-items:center; gap:14px; padding:20px 0; }
@@ -680,7 +681,7 @@ html, body { height: 100%; background: #040608; font-family: 'DM Sans', sans-ser
   <div class="ctmsg" id="ctmsg"></div>
   <div class="ctin">
     <input class="ctinp" id="ctinp" placeholder="Nova etwas fragen..." onkeydown="if(event.key==='Enter')sendMsg()">
-    <button class="vcbtn" id="ctVoiceBtn" onmousedown="ctStartRecord()" onmouseup="ctStopRecord()" ontouchstart="ctStartRecord()" ontouchend="ctStopRecord()"><svg width="13" height="17" viewBox="0 0 13 17" fill="none"><rect x="3.5" y="0.5" width="6" height="10" rx="3" fill="white" opacity="0.7"/><path d="M1 8.5c0 3.04 2.46 5.5 5.5 5.5S12 11.54 12 8.5" stroke="white" stroke-width="1.6" fill="none" stroke-linecap="round"/><line x1="6.5" y1="14" x2="6.5" y2="16.5" stroke="white" stroke-width="1.6" stroke-linecap="round" opacity="0.7"/></svg></button>
+    <button class="vcbtn" id="ctVoiceBtn" onmousedown="ctStartRecord()" onmouseup="ctStopRecord()" ontouchstart="ctStartRecord()" ontouchend="ctStopRecord()"><svg width="20" height="26" viewBox="0 0 13 17" fill="none"><rect x="3.5" y="0.5" width="6" height="10" rx="3" fill="white" opacity="0.85"/><path d="M1 8.5c0 3.04 2.46 5.5 5.5 5.5S12 11.54 12 8.5" stroke="white" stroke-width="1.6" fill="none" stroke-linecap="round"/><line x1="6.5" y1="14" x2="6.5" y2="16.5" stroke="white" stroke-width="1.6" stroke-linecap="round" opacity="0.85"/></svg></button>
     <button class="sndbtn" onclick="sendMsg()"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M12 2L6 8M12 2L8.5 12L6 8M12 2L2 5.5L6 8" stroke="#000" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
   </div>
 </div>
@@ -3209,13 +3210,13 @@ function playEndSound() {
 // Chat-Screen Voice Button (Press-and-Hold fuer Whisper)
 function ctStartRecord() {
   var btn = document.getElementById('ctVoiceBtn');
-  if(btn) btn.style.background = 'var(--g)';
+  if(btn) btn.classList.add('recording');
   startVoiceRecording();
 }
 
 function ctStopRecord() {
   var btn = document.getElementById('ctVoiceBtn');
-  if(btn) btn.style.background = '';
+  if(btn) btn.classList.remove('recording');
   stopVoiceRecording();
 }
 
@@ -3235,8 +3236,17 @@ function ctStopRecord() {
 // API KEYS
 // ============================================================
 // Keys werden sicher aus lokalem Gerätespeicher geladen – nie im Code
-var OPENAI_KEY = localStorage.getItem('nova_openai_key') || '';
-var SPOONACULAR_KEY = localStorage.getItem('nova_spoonacular_key') || '80405d87c1024b4ab8064f82e88b5412';
+var OPENAI_KEY = '';
+var SPOONACULAR_KEY = '80405d87c1024b4ab8064f82e88b5412';
+
+// Sicher laden mit try/catch (Private Browsing blockiert localStorage)
+try {
+  OPENAI_KEY = localStorage.getItem('nova_openai_key') || '';
+  var savedSpoon = localStorage.getItem('nova_spoonacular_key');
+  if(savedSpoon) SPOONACULAR_KEY = savedSpoon;
+} catch(e) {
+  console.warn('localStorage nicht verfuegbar:', e);
+}
 
 // Gespraechsverlauf fuer GPT-4o (letzte 8 Nachrichten)
 var chatHistory = [];
@@ -3706,35 +3716,45 @@ function startVoiceRecording() {
   isRecording = true;
   audioChunks = [];
 
-  // iOS Safari braucht explizite User-Interaction ohne preventDefault
-  navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
-    .then(function(stream) {
-      // MIME-Type je nach Browser waehlen
-      var mimeType = 'audio/webm';
-      if(!MediaRecorder.isTypeSupported('audio/webm')) {
-        if(MediaRecorder.isTypeSupported('audio/mp4')) mimeType = 'audio/mp4';
-        else if(MediaRecorder.isTypeSupported('audio/ogg')) mimeType = 'audio/ogg';
-        else mimeType = '';
-      }
+  function beginRecording(stream) {
+    var mimeType = '';
+    if(MediaRecorder.isTypeSupported('audio/mp4')) mimeType = 'audio/mp4';
+    else if(MediaRecorder.isTypeSupported('audio/webm')) mimeType = 'audio/webm';
+    else if(MediaRecorder.isTypeSupported('audio/ogg')) mimeType = 'audio/ogg';
 
-      var options = mimeType ? { mimeType: mimeType } : {};
+    var options = mimeType ? { mimeType: mimeType } : {};
+    try {
       mediaRecorder = new MediaRecorder(stream, options);
+    } catch(e) {
+      mediaRecorder = new MediaRecorder(stream);
+      mimeType = '';
+    }
 
-      mediaRecorder.ondataavailable = function(e) {
-        if(e.data && e.data.size > 0) audioChunks.push(e.data);
-      };
-      mediaRecorder.onstop = function() {
-        stream.getTracks().forEach(function(t){ t.stop(); });
-        if(audioChunks.length > 0) transcribeAudio(mimeType);
-      };
-      mediaRecorder.start(100); // 100ms Chunks fuer stabiles Recording
-    })
-    .catch(function(err) {
-      console.error('Mic error:', err);
-      isRecording = false;
-      // Fallback: Browser Web Speech API
-      startBrowserSpeech();
-    });
+    mediaRecorder.ondataavailable = function(e) {
+      if(e.data && e.data.size > 0) audioChunks.push(e.data);
+    };
+    mediaRecorder.onstop = function() {
+      if(audioChunks.length > 0) transcribeAudio(mimeType);
+    };
+    mediaRecorder.start(100);
+  }
+
+  // Vorgehaltenen Stream nutzen falls vorhanden
+  if(globalMicStream && globalMicStream.active) {
+    beginRecording(globalMicStream);
+  } else {
+    // Neu anfragen
+    navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
+      .then(function(stream) {
+        globalMicStream = stream;
+        beginRecording(stream);
+      })
+      .catch(function(err) {
+        console.error('Mic error:', err);
+        isRecording = false;
+        startBrowserSpeech();
+      });
+  }
 }
 
 function stopVoiceRecording() {
@@ -3742,6 +3762,7 @@ function stopVoiceRecording() {
   isRecording = false;
   if(mediaRecorder && mediaRecorder.state === 'recording') {
     mediaRecorder.stop();
+    // Globalen Stream NICHT stoppen - fuer naechste Aufnahme offen halten
   }
 }
 
@@ -4171,6 +4192,23 @@ function swapIngredient(oldIngredient, newIngredient, mealId) {
 // ============================================================
 // SETUP – API Keys sicher speichern
 // ============================================================
+
+// Mikrofon-Stream fuer die gesamte Session vorhalten (verhindert wiederholte iOS-Abfragen)
+var globalMicStream = null;
+
+function warmUpMicrophone() {
+  if(globalMicStream) return;
+  navigator.mediaDevices.getUserMedia({ audio: true })
+    .then(function(stream) {
+      globalMicStream = stream;
+      // Stream leise laufen lassen damit iOS ihn nicht schliesst
+      // (Tracks bleiben aktiv, nehmen aber nichts auf)
+      console.log('Mikrofon vorinitialisiert');
+    })
+    .catch(function(err) {
+      console.warn('Mikrofon Vorinitialisierung fehlgeschlagen:', err);
+    });
+}
 function saveKeysAndStart() {
   var openaiKey = document.getElementById('setupOpenAIKey').value.trim();
   var spoonKey = document.getElementById('setupSpoonacularKey').value.trim();
@@ -4182,15 +4220,29 @@ function saveKeysAndStart() {
     return;
   }
 
-  // Keys sicher im lokalen Gerätespeicher speichern
-  localStorage.setItem('nova_openai_key', openaiKey);
-  if(spoonKey) localStorage.setItem('nova_spoonacular_key', spoonKey);
+  // Keys sicher speichern
+  try {
+    localStorage.setItem('nova_openai_key', openaiKey);
+    if(spoonKey) localStorage.setItem('nova_spoonacular_key', spoonKey);
+  } catch(e) {
+    console.warn('localStorage Fehler:', e);
+    errEl.style.display = 'block';
+    errEl.textContent = 'Hinweis: Privates Surfen aktiv – Key wird nur fuer diese Session gespeichert.';
+  }
 
-  // Keys in laufende Variablen laden
+  // Keys sofort in laufende Variablen laden
   OPENAI_KEY = openaiKey;
   if(spoonKey) SPOONACULAR_KEY = spoonKey;
 
   errEl.style.display = 'none';
+
+  // Kurz bestaetigen
+  var btn = document.querySelector('#setup .btnp');
+  if(btn) { btn.textContent = '✓ Gespeichert!'; setTimeout(function(){ btn.textContent = 'Keys speichern & starten'; }, 1500); }
+
+  // Mikrofon direkt nach User-Tap vorinitialisieren (iOS erlaubt das hier)
+  warmUpMicrophone();
+
   goTo('wl');
 }
 
@@ -4213,10 +4265,10 @@ function resetKeys() {
     OPENAI_KEY = savedKey;
     var spoon = localStorage.getItem('nova_spoonacular_key');
     if(spoon) SPOONACULAR_KEY = spoon;
-    // Key vorhanden – direkt zur App
     goTo('wl');
+    // Mikrofon nach kurzem Delay vorinitialisieren
+    setTimeout(warmUpMicrophone, 1500);
   } else {
-    // Kein Key – Setup-Screen zeigen
     goTo('setup');
   }
 })();
