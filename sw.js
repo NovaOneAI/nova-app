@@ -1,14 +1,13 @@
-// NOVA Service Worker v1.0
-const CACHE_NAME = 'nova-v1';
+// NOVA Service Worker v1.1 – relative Pfade fuer GitHub Pages
+const CACHE_NAME = 'nova-v2';
 const ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/icon-192.png',
-  '/icon-512.png'
+  './',
+  './index.html',
+  './manifest.json',
+  './icon-192.png',
+  './icon-512.png'
 ];
 
-// Install: cache alle Assets
 self.addEventListener('install', function(e) {
   e.waitUntil(
     caches.open(CACHE_NAME).then(function(cache) {
@@ -18,7 +17,6 @@ self.addEventListener('install', function(e) {
   self.skipWaiting();
 });
 
-// Activate: alten Cache loeschen
 self.addEventListener('activate', function(e) {
   e.waitUntil(
     caches.keys().then(function(keys) {
@@ -31,11 +29,10 @@ self.addEventListener('activate', function(e) {
   self.clients.claim();
 });
 
-// Fetch: Cache first, dann Network
 self.addEventListener('fetch', function(e) {
-  // API-Requests (OpenAI) nie cachen
   if(e.request.url.indexOf('anthropic.com') >= 0 ||
-     e.request.url.indexOf('openai.com') >= 0) {
+     e.request.url.indexOf('openai.com') >= 0 ||
+     e.request.url.indexOf('googleapis.com') >= 0) {
     return;
   }
   e.respondWith(
@@ -50,8 +47,7 @@ self.addEventListener('fetch', function(e) {
         }
         return response;
       }).catch(function() {
-        // Offline-Fallback
-        return caches.match('/index.html');
+        return caches.match('./index.html');
       });
     })
   );
