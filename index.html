@@ -543,40 +543,38 @@ html, body { height: 100%; background: #040608; font-family: 'DM Sans', sans-ser
         <div class="mcv" id="kcdsp">420 / 1.800 kcal</div>
       </div>
       <div class="mctr"><div class="mcf" id="mcfill" style="width:23%"></div></div>
-      <!-- Makro-Kreise -->
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px;">
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px;">
         <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
-          <div style="position:relative;width:64px;height:64px;">
-            <canvas id="ringP" width="64" height="64"></canvas>
+          <div style="position:relative;width:80px;height:80px;">
+            <canvas id="ringP" width="80" height="80"></canvas>
             <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;">
-              <div style="font-size:12px;font-weight:700;color:#5DFFB8;" id="mP">28g</div>
-              <div style="font-size:8px;color:var(--t3);" id="mPS">/ 150g</div>
+              <div style="font-size:15px;font-weight:700;color:#5DFFB8;line-height:1;" id="mP">28g</div>
+              <div style="font-size:10px;color:var(--t2);margin-top:2px;" id="mPS">/ 150g</div>
             </div>
           </div>
-          <div style="font-size:10px;color:var(--t2);font-weight:500;">Protein</div>
+          <div style="font-size:11px;color:var(--t2);font-weight:600;">Protein</div>
         </div>
         <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
-          <div style="position:relative;width:64px;height:64px;">
-            <canvas id="ringC" width="64" height="64"></canvas>
+          <div style="position:relative;width:80px;height:80px;">
+            <canvas id="ringC" width="80" height="80"></canvas>
             <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;">
-              <div style="font-size:12px;font-weight:700;color:#7C6FE0;" id="mC">32g</div>
-              <div style="font-size:8px;color:var(--t3);" id="mCS">/ 200g</div>
+              <div style="font-size:15px;font-weight:700;color:#7C6FE0;line-height:1;" id="mC">32g</div>
+              <div style="font-size:10px;color:var(--t2);margin-top:2px;" id="mCS">/ 200g</div>
             </div>
           </div>
-          <div style="font-size:10px;color:var(--t2);font-weight:500;">Carbs</div>
+          <div style="font-size:11px;color:var(--t2);font-weight:600;">Carbs</div>
         </div>
         <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
-          <div style="position:relative;width:64px;height:64px;">
-            <canvas id="ringF" width="64" height="64"></canvas>
+          <div style="position:relative;width:80px;height:80px;">
+            <canvas id="ringF" width="80" height="80"></canvas>
             <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;">
-              <div style="font-size:12px;font-weight:700;color:#F0A050;" id="mF">14g</div>
-              <div style="font-size:8px;color:var(--t3);" id="mFS">/ 65g</div>
+              <div style="font-size:15px;font-weight:700;color:#F0A050;line-height:1;" id="mF">14g</div>
+              <div style="font-size:10px;color:var(--t2);margin-top:2px;" id="mFS">/ 65g</div>
             </div>
           </div>
-          <div style="font-size:10px;color:var(--t2);font-weight:500;">Fett</div>
+          <div style="font-size:11px;color:var(--t2);font-weight:600;">Fett</div>
         </div>
       </div>
-      <div style="text-align:center;margin-top:6px;font-size:11px;color:var(--t3);">Noch frei: <span id="mR" style="color:var(--t);font-weight:600;">1.380</span> kcal</div>
     </div>
     <div class="ncs">
       <div class="ncc">
@@ -1740,28 +1738,27 @@ function drawMacroRing(canvasId, value, total, color) {
   var canvas = document.getElementById(canvasId);
   if(!canvas) return;
   var ctx = canvas.getContext('2d');
-  var size = 64, cx = 32, cy = 32, r = 26, lw = 6;
+  var size = 80, cx = 40, cy = 40, r = 33, lw = 7;
   ctx.clearRect(0,0,size,size);
-  // Background ring
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI*2);
-  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.07)';
   ctx.lineWidth = lw;
   ctx.stroke();
-  // Progress ring
   var pct = Math.min(value / Math.max(total,1), 1);
-  var startAngle = -Math.PI/2;
-  var endAngle = startAngle + pct * Math.PI * 2;
-  ctx.beginPath();
-  ctx.arc(cx, cy, r, startAngle, endAngle);
-  ctx.strokeStyle = color;
-  ctx.lineWidth = lw;
-  ctx.lineCap = 'round';
-  ctx.stroke();
-  // Over 100%: red warning arc
+  if(pct > 0) {
+    var startAngle = -Math.PI/2;
+    var endAngle = startAngle + pct * Math.PI * 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, startAngle, endAngle);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lw;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+  }
   if(pct >= 1) {
     ctx.beginPath();
-    ctx.arc(cx, cy, r, startAngle, startAngle + 0.3);
+    ctx.arc(cx, cy, r, -Math.PI/2, -Math.PI/2 + 0.4);
     ctx.strokeStyle = '#FF4444';
     ctx.lineWidth = lw;
     ctx.stroke();
@@ -1780,7 +1777,8 @@ function syncMacros() {
   document.getElementById('mFS').textContent = '/ ' + S.tF + 'g';
   document.getElementById('kcdsp').textContent = c.kcal.toLocaleString('de') + ' / ' + total.toLocaleString('de') + ' kcal';
   var remaining = Math.max(0, total - c.kcal);
-  document.getElementById('mR').textContent = remaining.toLocaleString('de');
+  var mR = document.getElementById('mR');
+  if(mR) mR.textContent = remaining.toLocaleString('de');
   // Fortschrittsbalken
   var pct = Math.round(c.kcal / total * 100);
   document.getElementById('mcfill').style.width = Math.min(pct, 100) + '%';
@@ -3004,39 +3002,31 @@ function initChat() {
 
 // NOVA INTRO MODAL – Typewriter Untertitel + natuerliche Sprache
 var introSpeechTexts = [
-  'Hey, schoeen dass du da bist! Ich bin Nova, dein persoenlicher Ernaehrungscoach.',
+  'Hey, schoen dass du da bist! Ich bin Nova, dein persoenlicher Ernaehrungscoach.',
   'Du kannst mit mir komplett per Sprache kommunizieren und brauchst gar nicht mehr zu tippen.',
   'Ich denke mit, passe deinen Plan an und sage dir ehrlich was gut laeuft und was nicht.',
   'Ich stelle dir jetzt ein paar kurze Fragen – red einfach mit mir, das reicht vollkommen!'
 ];
 
-// Wann welche Kachel erscheint (in ms, synchron zum gesprochenen Text)
 var introCardTimes = [1800, 4200, 6800];
-var introBtnTime = 9000;
+var introBtnTime = 9500;
+var introTypeTimer = null;
 
 function showNovaIntro() {
   var modal = document.getElementById('novaIntroModal');
   modal.style.display = 'flex';
-
-  // Orb aktivieren
   var orb = document.getElementById('introOrb');
   orb.classList.add('act');
-
-  // Alles zuruecksetzen
-  var sub = document.getElementById('introSubtitle');
-  if(sub) sub.textContent = '';
   ['introCard1','introCard2','introCard3'].forEach(function(id) {
     var el = document.getElementById(id);
     if(el) { el.style.opacity='0'; el.style.transform='translateX(-8px)'; }
   });
   var btn = document.getElementById('introBtn');
   if(btn) btn.style.opacity = '0';
+  var sub = document.getElementById('introSubtitle');
+  if(sub) { sub.textContent=''; sub.style.opacity='0'; }
 
-  // Typewriter-Sequenz starten
-  var allText = introSpeechTexts.join(' ');
-  typewriterIntro(allText, 0, 28);
-
-  // Kacheln sanft einblenden – von links reinschieben
+  // Karten einblenden
   introCardTimes.forEach(function(t, i) {
     setTimeout(function() {
       var el = document.getElementById('introCard' + (i+1));
@@ -3044,7 +3034,7 @@ function showNovaIntro() {
     }, t);
   });
 
-  // Button erscheint am Ende
+  // Button einblenden
   setTimeout(function() {
     if(btn) btn.style.opacity = '1';
     orb.classList.remove('act');
@@ -3052,21 +3042,34 @@ function showNovaIntro() {
     if(cursor) cursor.style.display = 'none';
   }, introBtnTime);
 
+  // Untertitel: Satz fuer Satz fade in -> kurz warten -> fade out
+  showIntroSubtitle(0);
+
   // Nova spricht parallel
   novaSpeak(introSpeechTexts);
 }
 
-var typewriterTimer = null;
-function typewriterIntro(text, idx, speed) {
-  if(typewriterTimer) clearTimeout(typewriterTimer);
+function showIntroSubtitle(idx) {
+  if(idx >= introSpeechTexts.length) return;
   var sub = document.getElementById('introSubtitle');
   if(!sub) return;
-  if(idx <= text.length) {
-    sub.textContent = text.substring(0, idx);
-    typewriterTimer = setTimeout(function() {
-      typewriterIntro(text, idx+1, speed);
-    }, speed);
-  }
+
+  // Fade in
+  sub.textContent = introSpeechTexts[idx];
+  sub.style.transition = 'opacity 0.5s ease';
+  sub.style.opacity = '1';
+
+  // Anzeigedauer abhaengig von Textlaenge (ca. 60ms pro Zeichen, min 2.5s)
+  var displayMs = Math.max(2500, introSpeechTexts[idx].length * 55);
+
+  setTimeout(function() {
+    // Fade out
+    sub.style.transition = 'opacity 0.4s ease';
+    sub.style.opacity = '0';
+    setTimeout(function() {
+      showIntroSubtitle(idx + 1);
+    }, 500);
+  }, displayMs);
 }
 
 function novaSpeak(texts) {
@@ -3098,7 +3101,7 @@ function novaSpeak(texts) {
 function closeIntroAndStart() {
   var modal = document.getElementById('novaIntroModal');
   modal.style.display = 'none';
-  if(typewriterTimer) clearTimeout(typewriterTimer);
+  if(introTypeTimer) clearTimeout(introTypeTimer);
   window.speechSynthesis && window.speechSynthesis.cancel();
   goTo('ob');
   renderStep();
