@@ -187,7 +187,7 @@ html, body { height: 100%; background: #040608; font-family: 'DM Sans', sans-ser
 .ncdot { width:7px; height:7px; border-radius:50%; background:var(--g); box-shadow:0 0 6px var(--g); animation:blk 2s infinite; }
 .nclbl { font-size:11px; color:var(--g); font-weight:600; letter-spacing:.5px; text-transform:uppercase; }
 .nchint { font-size:11px; color:var(--t3); width:100%; margin-bottom:18px; line-height:1.4; }
-.nvbtn { border:none; background:transparent; padding:0; cursor:pointer; }
+.nvbtn { border:none; background:transparent; padding:0; cursor:pointer; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; touch-action:none; }
 @keyframes blk { 0%,100%{opacity:1} 50%{opacity:.3} }
 
 /* MEALS */
@@ -324,13 +324,13 @@ html, body { height: 100%; background: #040608; font-family: 'DM Sans', sans-ser
 .tyd:nth-child(3) { animation-delay:.4s; }
 @keyframes tya { 0%,100%{transform:translateY(0);opacity:.4} 50%{transform:translateY(-5px);opacity:1} }
 .ctin { padding:11px 15px; border-top:1px solid var(--bd); display:flex; align-items:center; gap:9px; flex-shrink:0; }
-.ctinp { flex:1; background:var(--bg3); border:1px solid var(--bd); border-radius:22px;
+.ctinp { flex:1; background:var(--bg3); border:1px solid var(--bd); border-radius:22px; -webkit-user-select:text; user-select:text;
   padding:11px 15px; font-size:13px; color:var(--t); font-family:'DM Sans',sans-serif; outline:none; }
 .ctinp:focus { border-color:rgba(29,184,122,.3); }
 .ctinp::placeholder { color:var(--t3); }
 .sndbtn { width:40px; height:40px; border-radius:50%; background:var(--g); border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
-.vcbtn { width:52px; height:52px; border-radius:50%; background:rgba(29,184,122,0.15); border:1.5px solid rgba(29,184,122,0.4); cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:background 0.15s,transform 0.1s; }
-.vcbtn:active, .vcbtn.recording { background:rgba(29,184,122,0.4); transform:scale(0.95); border-color:var(--g); }
+.vcbtn { width:58px; height:58px; border-radius:50%; background:rgba(29,184,122,0.15); border:1.5px solid rgba(29,184,122,0.4); cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:background 0.15s; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; touch-action:none; }
+.vcbtn:active, .vcbtn.recording { background:rgba(29,184,122,0.5); border-color:var(--g); box-shadow:0 0 0 6px rgba(29,184,122,0.15); }
 
 /* ADJUST */
 .adjva { display:flex; flex-direction:column; align-items:center; gap:14px; padding:20px 0; }
@@ -681,7 +681,7 @@ html, body { height: 100%; background: #040608; font-family: 'DM Sans', sans-ser
   <div class="ctmsg" id="ctmsg"></div>
   <div class="ctin">
     <input class="ctinp" id="ctinp" placeholder="Nova etwas fragen..." onkeydown="if(event.key==='Enter')sendMsg()">
-    <button class="vcbtn" id="ctVoiceBtn" onmousedown="ctStartRecord()" onmouseup="ctStopRecord()" ontouchstart="ctStartRecord()" ontouchend="ctStopRecord()"><svg width="20" height="26" viewBox="0 0 13 17" fill="none"><rect x="3.5" y="0.5" width="6" height="10" rx="3" fill="white" opacity="0.85"/><path d="M1 8.5c0 3.04 2.46 5.5 5.5 5.5S12 11.54 12 8.5" stroke="white" stroke-width="1.6" fill="none" stroke-linecap="round"/><line x1="6.5" y1="14" x2="6.5" y2="16.5" stroke="white" stroke-width="1.6" stroke-linecap="round" opacity="0.85"/></svg></button>
+    <button class="vcbtn" id="ctVoiceBtn" onmousedown="ctStartRecord()" onmouseup="ctStopRecord()" ontouchstart="ctStartRecord(event)" ontouchend="ctStopRecord(event)" ontouchmove="event.preventDefault()"><svg width="20" height="26" viewBox="0 0 13 17" fill="none"><rect x="3.5" y="0.5" width="6" height="10" rx="3" fill="white" opacity="0.85"/><path d="M1 8.5c0 3.04 2.46 5.5 5.5 5.5S12 11.54 12 8.5" stroke="white" stroke-width="1.6" fill="none" stroke-linecap="round"/><line x1="6.5" y1="14" x2="6.5" y2="16.5" stroke="white" stroke-width="1.6" stroke-linecap="round" opacity="0.85"/></svg></button>
     <button class="sndbtn" onclick="sendMsg()"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M12 2L6 8M12 2L8.5 12L6 8M12 2L2 5.5L6 8" stroke="#000" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
   </div>
 </div>
@@ -3019,7 +3019,23 @@ function launchHome() {
 var NOVA_SYSTEM_PROMPT = 'Du bist Nova, ein persoenlicher KI-Ernaehrungscoach. Du sprichst ausschliesslich Deutsch. Du bist professionell, kompetent und zugaenglich – wie ein erfahrener Coach der seinen Job ernst nimmt, aber nie einschuechternd wirkt. Du duzt immer. Kurze, klare Saetze. Maximal 2-3 Saetze pro Antwort. Maximal eine Frage pro Antwort. Gelegentlich ein Emoji – sparsam. Fachliche Basis: Mifflin-St.-Jeor, DGE-Richtlinien, ISSN-Standards. Niemals Off-Topic-Fragen beantworten – freundlich ablehnen: Das liegt ausserhalb meines Fachgebiets. Nie demotivierend bei Cheat Days. Unrealistische Ziele (mehr als 1 kg/Woche) professionell ablehnen und Alternative vorschlagen.';
 
 function buildUserContext() {
-  return 'Nutzerprofil: Ziel=' + S.goal + ', Kalorien=' + S.tKcal + ' kcal/Tag, Protein=' + S.tP + 'g, Carbs=' + S.tC + 'g, Fett=' + S.tF + 'g, KFA=' + S.kfa + '%, Wochen zum Ziel=' + S.weeks + ', Trainingstage=' + S.trainingDays.join(' und ') + '.';
+  var consumed = S.todayConsumed;
+  var totalKcal = S.tKcal + (S.bonusKcal || 0);
+  var remaining = totalKcal - consumed.kcal;
+  var pRemaining = S.tP - consumed.p;
+  var goalLabel = S.goal === 'abnehmen' ? 'Abnehmen' : S.goal === 'muskeln' ? 'Muskelaufbau' : 'Gesund leben';
+
+  var ctx = 'AKTUELLER APP-ZUSTAND (verwende diese Daten direkt ohne nachzufragen):\n';
+  ctx += '- Ziel: ' + goalLabel + '\n';
+  ctx += '- Tagesziel: ' + totalKcal + ' kcal (' + S.tP + 'g Protein, ' + S.tC + 'g Carbs, ' + S.tF + 'g Fett)\n';
+  ctx += '- Heute bereits gegessen: ' + consumed.kcal + ' kcal (' + consumed.p + 'g P, ' + consumed.c + 'g C, ' + consumed.f + 'g F)\n';
+  ctx += '- Heute noch verfuegbar: ' + remaining + ' kcal (' + Math.max(0,pRemaining) + 'g Protein noch offen)\n';
+  ctx += '- Trainingsbonus heute: ' + (S.bonusKcal || 0) + ' kcal\n';
+  ctx += '- Aktuelles Gewicht: ' + (S.weight || 83) + ' kg, Zielgewicht: ' + (S.targetWeight || 75) + ' kg\n';
+  ctx += '- Trainingstage: ' + (S.trainingDays && S.trainingDays.length ? S.trainingDays.join(', ') : 'keine geplant') + '\n';
+  ctx += '- Streak: ' + (S.streak || 0) + ' Tage\n';
+  ctx += '\nWICHTIG: Du hast Zugriff auf alle diese Daten. Beantworte Fragen direkt mit diesen Werten. Frage NIE nach Kalorien oder Makros die bereits bekannt sind. Wenn der User fragt ob er noch etwas essen darf, rechne direkt mit den verbleibenden ' + remaining + ' kcal.';
+  return ctx;
 }
 
 function initChat() {
@@ -3208,13 +3224,15 @@ function playEndSound() {
 }
 
 // Chat-Screen Voice Button (Press-and-Hold fuer Whisper)
-function ctStartRecord() {
+function ctStartRecord(e) {
+  if(e) { e.preventDefault(); e.stopPropagation(); }
   var btn = document.getElementById('ctVoiceBtn');
   if(btn) btn.classList.add('recording');
   startVoiceRecording();
 }
 
-function ctStopRecord() {
+function ctStopRecord(e) {
+  if(e) { e.preventDefault(); e.stopPropagation(); }
   var btn = document.getElementById('ctVoiceBtn');
   if(btn) btn.classList.remove('recording');
   stopVoiceRecording();
