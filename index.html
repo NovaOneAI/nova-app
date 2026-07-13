@@ -798,7 +798,7 @@ html, body { height: 100%; background: #040608; font-family: 'DM Sans', sans-ser
       </div>
     </div>
     <button class="btnp" id="introBtn" onclick="closeIntroAndStart()" style="width:100%;opacity:0;transition:opacity 0.5s ease;">Los geht's &#x1F680;</button>
-    <div style="font-size:10px;color:var(--t3);margin-top:10px;">Dauert nur ca. 2 Minuten</div>
+    <div style="font-size:10px;color:var(--t3);margin-top:10px;">Tippe irgendwo um Nova zu hoeren 🎙️</div>
   </div>
 </div>
 
@@ -3073,11 +3073,24 @@ function showNovaIntro() {
     if(cursor) cursor.style.display = 'none';
   }, introBtnTime);
 
-  // Untertitel: Satz fuer Satz fade in -> kurz warten -> fade out
+  // Untertitel sofort starten
   showIntroSubtitle(0);
 
-  // Nova spricht parallel
-  novaSpeak(introSpeechTexts);
+  // iOS: TTS erst nach erstem Tap (Autoplay-Policy)
+  // Auf iOS kein automatisches Audio erlaubt ohne User-Interaction
+  var ttsStarted = false;
+  var modal2 = document.getElementById('novaIntroModal');
+  function startTTSOnTap() {
+    if(ttsStarted) return;
+    ttsStarted = true;
+    modal2.removeEventListener('touchstart', startTTSOnTap);
+    novaSpeak(introSpeechTexts);
+  }
+  modal2.addEventListener('touchstart', startTTSOnTap, { passive: true });
+  // Desktop: sofort sprechen
+  if(!/iphone|ipad|ipod|android/i.test(navigator.userAgent)) {
+    setTimeout(function() { novaSpeak(introSpeechTexts); }, 300);
+  }
 }
 
 function showIntroSubtitle(idx) {
@@ -3122,19 +3135,30 @@ function novaSpeak(texts) {
     if(idx >= texts.length) return;
     var utt = new SpeechSynthesisUtterance(texts[idx]);
     utt.lang = 'de-DE';
-    utt.rate = 0.92;
+    utt.rate = 0.9;
     utt.pitch = 1.05;
     utt.volume = 1.0;
+    // Beste deutsche Stimme waehlen
     var voices = window.speechSynthesis.getVoices();
     var deVoice = voices.find(function(v) {
-      return v.lang.indexOf('de') === 0 && (v.name.indexOf('Google') >= 0 || v.name.indexOf('Anna') >= 0 || v.name.indexOf('Petra') >= 0 || v.name.indexOf('Female') >= 0);
+      return v.lang.indexOf('de') === 0 &&
+        (v.name.indexOf('Google') >= 0 || v.name.indexOf('Anna') >= 0 ||
+         v.name.indexOf('Petra') >= 0 || v.name.indexOf('Yannick') >= 0);
     }) || voices.find(function(v) { return v.lang.indexOf('de') === 0; });
     if(deVoice) utt.voice = deVoice;
-    utt.onend = function() { idx++; speakNext(); };
-    window.speechSynthesis.speak(utt);
+    utt.onend = function() { idx++; setTimeout(speakNext, 200); };
+    utt.onerror = function() { idx++; setTimeout(speakNext, 300); };
+    try { window.speechSynthesis.speak(utt); } catch(e) {}
   }
-  if(window.speechSynthesis.getVoices().length === 0) {
-    window.speechSynthesis.onvoiceschanged = function() { speakNext(); };
+  // iOS: Voices koennen async laden
+  var voices = window.speechSynthesis.getVoices();
+  if(voices.length === 0) {
+    window.speechSynthesis.onvoiceschanged = function() {
+      window.speechSynthesis.onvoiceschanged = null;
+      speakNext();
+    };
+    // Fallback falls onvoiceschanged nie feuert (manche iOS Versionen)
+    setTimeout(speakNext, 500);
   } else {
     speakNext();
   }
@@ -3598,11 +3622,14 @@ function callNova(userText) {
     if(ctOrb) ctOrb.classList.remove('act');
     console.error('OpenAI error:', err);
 
-    // Key pruefen
-    if(!OPENAI_KEY || OPENAI_KEY.length < 10) {
-      addMsg('Kein API-Key gefunden. Bitte geh in die Einstellungen und trag deinen OpenAI Key ein.', false);
+    if(!OPENAI_KEY || OPENAI_KEY.length < 20) {
+      addMsg('⚠️ Kein API-Key gefunden. Tippe oben auf ⚙️ um deinen Key einzugeben.', false);
+    } else if(err.message && err.message.indexOf('401') >= 0) {
+      addMsg('⚠️ API-Key ungueltig oder abgelaufen. Tippe auf ⚙️ und gib deinen neuen Key ein.', false);
+    } else if(err.message && err.message.indexOf('429') >= 0) {
+      addMsg('⚠️ Zu viele Anfragen – kurz warten und nochmal versuchen.', false);
     } else {
-      addMsg(getFallbackReply(userText), false);
+      addMsg('⚠️ Verbindungsfehler (' + (err.message||'unbekannt') + '). Bitte Internetverbindung pruefen und nochmal versuchen.', false);
     }
   });
 }
