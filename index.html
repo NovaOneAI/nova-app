@@ -675,6 +675,7 @@ html, body { height: 100%; background: #040608; font-family: 'DM Sans', sans-ser
       <div class="ctnm">NOVA</div>
       <div class="ctst"><div style="width:5px;height:5px;border-radius:50%;background:var(--g);animation:blk 2s infinite"></div>Online - KI-Ernaehrungscoach</div>
     </div>
+    <button onclick="resetKeys()" style="background:none;border:none;color:var(--t3);font-size:10px;cursor:pointer;padding:4px 6px;" title="API Key zuruecksetzen">⚙️</button>
   </div>
   <div class="ctmsg" id="ctmsg"></div>
   <div class="ctin">
@@ -3197,9 +3198,10 @@ function ctStopRecord() {
 (function setupNovaHoldButton(){
   var btn = document.getElementById('novaHoldBtn');
   if(!btn) return;
-  btn.addEventListener('touchstart', startHold, { passive: false });
-  btn.addEventListener('touchend', endHold, { passive: false });
-  btn.addEventListener('touchcancel', cancelHold, { passive: false });
+  // passive:true wichtig fuer iOS – kein preventDefault im Handler!
+  btn.addEventListener('touchstart', startHold, { passive: true });
+  btn.addEventListener('touchend', endHold, { passive: true });
+  btn.addEventListener('touchcancel', cancelHold, { passive: true });
   btn.addEventListener('mousedown', startHold);
   btn.addEventListener('mouseup', endHold);
   btn.addEventListener('mouseleave', function(){ if(holdActive) cancelHold(); });
@@ -3533,7 +3535,7 @@ function sendMsg() {
 
 function callNova(userText) {
   var ctOrb = document.getElementById('ctOrb');
-  ctOrb.classList.add('act');
+  if(ctOrb) ctOrb.classList.add('act');
 
   // Typing Indicator
   var msgs = document.getElementById('ctmsg');
@@ -3546,45 +3548,62 @@ function callNova(userText) {
   var userCtx = buildUserContext();
   var systemPrompt = NOVA_SYSTEM_PROMPT + '\n\n' + userCtx;
 
-  // Verlauf aktualisieren
+  // Verlauf aktualisieren (max 10 Nachrichten)
   chatHistory.push({ role: 'user', content: userText });
-  if(chatHistory.length > 16) chatHistory = chatHistory.slice(-16);
+  if(chatHistory.length > 10) chatHistory = chatHistory.slice(-10);
 
-  fetch('https://api.anthropic.com/v1/messages', {
+  // OpenAI GPT-4o Mini (unterstuetzt Browser-CORS direkt)
+  fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + OPENAI_KEY
+    },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1000,
-      system: systemPrompt,
-      messages: chatHistory
+      model: 'gpt-4o-mini',
+      max_tokens: 300,
+      messages: [
+        { role: 'system', content: systemPrompt }
+      ].concat(chatHistory)
     })
   })
-  .then(function(r) { return r.json(); })
+  .then(function(r) {
+    if(!r.ok) throw new Error('OpenAI HTTP ' + r.status);
+    return r.json();
+  })
   .then(function(data) {
-    td.remove(); ctOrb.classList.remove('act');
+    var typEl = document.getElementById('typingIndicator');
+    if(typEl) typEl.remove();
+    if(ctOrb) ctOrb.classList.remove('act');
 
     var replyText = '';
-    if(data.content && data.content[0] && data.content[0].text) {
-      replyText = data.content[0].text;
+    if(data.choices && data.choices[0] && data.choices[0].message) {
+      replyText = data.choices[0].message.content;
     } else {
-      replyText = 'Entschuldigung, ich hatte kurz ein technisches Problem. Versuch es nochmal!';
+      replyText = 'Ich hatte kurz ein Problem – versuch es nochmal!';
     }
 
-    // Tool-Erkennung aus Text (einfache Keyword-Heuristik)
+    // Aktionen aus User-Text erkennen und ausfuehren
     detectAndExecuteAction(userText, replyText);
 
     chatHistory.push({ role: 'assistant', content: replyText });
     addMsg(replyText, false);
 
-    // Nova spricht die Antwort
+    // Nova-Stimme
     speakNovaReply(replyText);
   })
   .catch(function(err) {
-    td.remove(); ctOrb.classList.remove('act');
-    console.error('API error:', err);
-    // Fallback auf lokale Antworten
-    addMsg(getFallbackReply(userText), false);
+    var typEl = document.getElementById('typingIndicator');
+    if(typEl) typEl.remove();
+    if(ctOrb) ctOrb.classList.remove('act');
+    console.error('OpenAI error:', err);
+
+    // Key pruefen
+    if(!OPENAI_KEY || OPENAI_KEY.length < 10) {
+      addMsg('Kein API-Key gefunden. Bitte geh in die Einstellungen und trag deinen OpenAI Key ein.', false);
+    } else {
+      addMsg(getFallbackReply(userText), false);
+    }
   });
 }
 
@@ -3660,22 +3679,33 @@ function startVoiceRecording() {
   isRecording = true;
   audioChunks = [];
 
-  navigator.mediaDevices.getUserMedia({ audio: true })
+  // iOS Safari braucht explizite User-Interaction ohne preventDefault
+  navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
     .then(function(stream) {
-      mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      // MIME-Type je nach Browser waehlen
+      var mimeType = 'audio/webm';
+      if(!MediaRecorder.isTypeSupported('audio/webm')) {
+        if(MediaRecorder.isTypeSupported('audio/mp4')) mimeType = 'audio/mp4';
+        else if(MediaRecorder.isTypeSupported('audio/ogg')) mimeType = 'audio/ogg';
+        else mimeType = '';
+      }
+
+      var options = mimeType ? { mimeType: mimeType } : {};
+      mediaRecorder = new MediaRecorder(stream, options);
+
       mediaRecorder.ondataavailable = function(e) {
-        if(e.data.size > 0) audioChunks.push(e.data);
+        if(e.data && e.data.size > 0) audioChunks.push(e.data);
       };
       mediaRecorder.onstop = function() {
         stream.getTracks().forEach(function(t){ t.stop(); });
-        transcribeAudio();
+        if(audioChunks.length > 0) transcribeAudio(mimeType);
       };
-      mediaRecorder.start();
+      mediaRecorder.start(100); // 100ms Chunks fuer stabiles Recording
     })
     .catch(function(err) {
       console.error('Mic error:', err);
       isRecording = false;
-      // Fallback: Browser-Spracherkennung
+      // Fallback: Browser Web Speech API
       startBrowserSpeech();
     });
 }
@@ -3683,17 +3713,29 @@ function startVoiceRecording() {
 function stopVoiceRecording() {
   if(!isRecording) return;
   isRecording = false;
-  if(mediaRecorder && mediaRecorder.state !== 'inactive') {
+  if(mediaRecorder && mediaRecorder.state === 'recording') {
     mediaRecorder.stop();
   }
 }
 
-function transcribeAudio() {
+function transcribeAudio(mimeType) {
+  if(audioChunks.length === 0) return;
   var ctOrb = document.getElementById('ctOrb');
-  ctOrb.classList.add('act');
-  var blob = new Blob(audioChunks, { type:'audio/webm' });
+  if(ctOrb) ctOrb.classList.add('act');
+
+  var actualMime = mimeType || 'audio/webm';
+  var ext = actualMime.indexOf('mp4') >= 0 ? 'mp4' : actualMime.indexOf('ogg') >= 0 ? 'ogg' : 'webm';
+  var blob = new Blob(audioChunks, { type: actualMime });
+  audioChunks = [];
+
+  // Mindestgroesse pruefen (zu kurze Aufnahmen ablehnen)
+  if(blob.size < 1000) {
+    if(ctOrb) ctOrb.classList.remove('act');
+    return;
+  }
+
   var fd = new FormData();
-  fd.append('file', blob, 'voice.webm');
+  fd.append('file', blob, 'voice.' + ext);
   fd.append('model', 'whisper-1');
   fd.append('language', 'de');
 
@@ -3702,17 +3744,23 @@ function transcribeAudio() {
     headers: { 'Authorization': 'Bearer ' + OPENAI_KEY },
     body: fd
   })
-  .then(function(r) { return r.json(); })
+  .then(function(r) {
+    if(!r.ok) throw new Error('Whisper HTTP ' + r.status);
+    return r.json();
+  })
   .then(function(data) {
-    ctOrb.classList.remove('act');
-    if(data.text && data.text.trim()) {
+    if(ctOrb) ctOrb.classList.remove('act');
+    if(data.text && data.text.trim().length > 1) {
       var text = data.text.trim();
-      addMsg(text, true);
-      callNova(text);
+      goTo('ct');
+      setTimeout(function() {
+        addMsg(text, true);
+        callNova(text);
+      }, 100);
     }
   })
   .catch(function(err) {
-    ctOrb.classList.remove('act');
+    if(ctOrb) ctOrb.classList.remove('act');
     console.error('Whisper error:', err);
     startBrowserSpeech();
   });
@@ -3758,39 +3806,41 @@ function speakNovaReply(text) {
 
 // Press-and-Hold auf dem Homescreen -> Whisper
 function startHold(e) {
-  if(e) e.preventDefault();
+  // Kein preventDefault() – iOS braucht den nativen Touch-Flow fuer Mikrofon-Zugriff
   if(holdActive) return;
   holdActive = true;
   holdStartTime = Date.now();
   playStartSound();
   var orb = document.getElementById('hmOrb');
-  orb.classList.add('act');
+  if(orb) orb.classList.add('act');
   var hint = document.getElementById('novaHoldHint');
   if(hint) hint.textContent = 'Nova hoert zu... loslassen wenn fertig';
   startVoiceRecording();
 }
 
 function endHold(e) {
-  if(e) e.preventDefault();
   if(!holdActive) return;
   holdActive = false;
   var heldMs = Date.now() - holdStartTime;
   var orb = document.getElementById('hmOrb');
   var hint = document.getElementById('novaHoldHint');
-  orb.classList.remove('act');
+  if(orb) orb.classList.remove('act');
   if(hint) hint.textContent = 'Gedrueckt halten zum Sprechen';
 
-  if(heldMs < 350) {
-    stopVoiceRecording();
-    audioChunks = [];
+  if(heldMs < 400) {
+    // Zu kurz – Aufnahme verwerfen
     isRecording = false;
+    audioChunks = [];
+    if(mediaRecorder && mediaRecorder.state === 'recording') {
+      try { mediaRecorder.stop(); } catch(ex){}
+    }
     return;
   }
 
   playEndSound();
   stopVoiceRecording();
-
-  setTimeout(function() { goTo('ct'); }, 200);
+  // Nach Loslassen in Chat wechseln (Whisper laeuft im Hintergrund)
+  setTimeout(function() { goTo('ct'); }, 150);
 }
 
 function cancelHold() {
@@ -3798,12 +3848,12 @@ function cancelHold() {
   holdActive = false;
   isRecording = false;
   audioChunks = [];
-  if(mediaRecorder && mediaRecorder.state !== 'inactive') {
-    try { mediaRecorder.stop(); } catch(e){}
+  if(mediaRecorder && mediaRecorder.state === 'recording') {
+    try { mediaRecorder.stop(); } catch(ex){}
   }
   var orb = document.getElementById('hmOrb');
   var hint = document.getElementById('novaHoldHint');
-  orb.classList.remove('act');
+  if(orb) orb.classList.remove('act');
   if(hint) hint.textContent = 'Gedrueckt halten zum Sprechen';
 }
 
