@@ -2018,6 +2018,9 @@ function drawBody(canvas, gender, goal) {
 }
 
 // RENDER TODAY MEALS
+var extraMeals = []; // Vom User gemeldete Extra-Mahlzeiten (nicht im Plan)
+var removedPlannedMeals = {}; // Aus dem Tagesplan entfernte Mahlzeiten (id -> Grund)
+
 function renderTodayMeals() {
   var plan = NOVA_DATA.dayPlans.normal;
   var html = '';
@@ -2026,6 +2029,20 @@ function renderTodayMeals() {
     if(!r) continue;
     var labels = ['Fruehstueck - 07:30','Mittagessen - 12:30','Abendessen - 18:30'];
     var done = !!confirmedMeals[r.id] || i === 0;
+    var removed = removedPlannedMeals[r.id];
+    if(removed) {
+      // Entfernte Mahlzeit: durchgestrichen + Grund
+      html += '<div class="mlcd" style="opacity:0.45;">'
+        + '<div class="mlem" style="filter:grayscale(1);">' + r.emoji + '</div>'
+        + '<div class="mlif">'
+        + '<div class="mltm">' + labels[i] + '</div>'
+        + '<div class="mlnm" style="text-decoration:line-through;">' + r.name + '</div>'
+        + '<div class="mlkc" style="color:var(--t3);">Entfernt: ' + removed + '</div>'
+        + '</div>'
+        + '<div style="font-size:14px;flex-shrink:0;">✕</div>'
+        + '</div>';
+      continue;
+    }
     html += '<div class="mlcd" onclick="showMeal(\'' + r.id + '\')">'
       + '<div class="mlem">' + r.emoji + '</div>'
       + '<div class="mlif">'
@@ -2036,6 +2053,19 @@ function renderTodayMeals() {
       + '<div class="mlck ' + (done?'dn':'') + '">'
       + (done ? '<svg width="8" height="7" viewBox="0 0 8 7" fill="none"><path d="M1 3.5L3 5.5L7 1" stroke="#000" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>' : '')
       + '</div></div>';
+  }
+  // Extra-Mahlzeiten (vom User per Nova gemeldet) anhaengen
+  for(var ei=0; ei<extraMeals.length; ei++) {
+    var em = extraMeals[ei];
+    html += '<div class="mlcd" style="border-left:2px solid var(--g);">'
+      + '<div class="mlem">🍴</div>'
+      + '<div class="mlif">'
+      + '<div class="mltm">Getrackt - ' + em.time + '</div>'
+      + '<div class="mlnm">' + em.name + ' <span style="color:var(--g);font-size:10px;">✓</span></div>'
+      + '<div class="mlkc">' + em.kcal + ' kcal' + (em.p ? ' &middot; ' + em.p + 'g P' : '') + (em.c ? ' &middot; ' + em.c + 'g C' : '') + (em.f ? ' &middot; ' + em.f + 'g F' : '') + '</div>'
+      + '</div>'
+      + '<div class="mlck dn"><svg width="8" height="7" viewBox="0 0 8 7" fill="none"><path d="M1 3.5L3 5.5L7 1" stroke="#000" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>'
+      + '</div>';
   }
   document.getElementById('todayMeals').innerHTML = html;
 }
@@ -3034,7 +3064,27 @@ function buildUserContext() {
   ctx += '- Aktuelles Gewicht: ' + (S.weight || 83) + ' kg, Zielgewicht: ' + (S.targetWeight || 75) + ' kg\n';
   ctx += '- Trainingstage: ' + (S.trainingDays && S.trainingDays.length ? S.trainingDays.join(', ') : 'keine geplant') + '\n';
   ctx += '- Streak: ' + (S.streak || 0) + ' Tage\n';
-  ctx += '\nWICHTIG: Du hast Zugriff auf alle diese Daten. Beantworte Fragen direkt mit diesen Werten. Frage NIE nach Kalorien oder Makros die bereits bekannt sind. Wenn der User fragt ob er noch etwas essen darf, rechne direkt mit den verbleibenden ' + remaining + ' kcal.';
+
+  // Heutige geplante Mahlzeiten mit Status
+  ctx += '\nHEUTIGER TAGESPLAN (noch nicht gegessene geplante Mahlzeiten):\n';
+  var plan = NOVA_DATA.dayPlans.normal;
+  var plannedRemaining = 0;
+  for(var i=0; i<plan.length; i++) {
+    var r = getRecipe(plan[i]);
+    if(!r) continue;
+    if(removedPlannedMeals[r.id]) {
+      ctx += '- ' + r.name + ' [BEREITS ENTFERNT: ' + removedPlannedMeals[r.id] + ']\n';
+    } else if(confirmedMeals[r.id] || i === 0) {
+      ctx += '- ' + r.name + ' (' + r.kcal + ' kcal) [BEREITS GEGESSEN]\n';
+    } else {
+      ctx += '- ' + r.name + ' (' + r.kcal + ' kcal, ' + r.p + 'g P) [NOCH GEPLANT]\n';
+      plannedRemaining += r.kcal;
+    }
+  }
+  ctx += 'Summe noch geplanter Mahlzeiten: ' + plannedRemaining + ' kcal bei ' + remaining + ' kcal Restbudget.\n';
+
+  ctx += '\nWICHTIG: Du hast Zugriff auf alle diese Daten. Beantworte Fragen direkt mit diesen Werten. Frage NIE nach Kalorien oder Makros die bereits bekannt sind.';
+  ctx += '\nBUDGET-REGEL: Das Tagesziel darf NICHT ueberschritten werden. Nach jedem log_meal pruefen: Passen die noch geplanten Mahlzeiten (' + plannedRemaining + ' kcal) ins Restbudget? Wenn NEIN: remove_planned_meal fuer die Mahlzeit(en) aufrufen die nicht mehr reinpassen und dem User transparent erklaeren warum. Wenn der User etwas isst das eine geplante Mahlzeit ersetzt (z.B. Pizza statt Lachs zum Abendessen), die ersetzte Mahlzeit mit remove_planned_meal entfernen.';
   return ctx;
 }
 
@@ -3340,6 +3390,21 @@ var NOVA_TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'remove_planned_meal',
+      description: 'Eine geplante Mahlzeit aus dem heutigen Tagesplan entfernen. Aufrufen wenn: (1) der User etwas anderes gegessen hat das eine geplante Mahlzeit ersetzt, oder (2) das Kalorienbudget durch getrackte Mahlzeiten so weit aufgebraucht ist dass geplante Mahlzeiten nicht mehr reinpassen. Das Tagesziel darf NICHT ueberschritten werden.',
+      parameters: {
+        type: 'object',
+        properties: {
+          meal_name: { type: 'string', description: 'Name der geplanten Mahlzeit die entfernt wird (z.B. "Lachs")' },
+          reason: { type: 'string', description: 'Kurzer Grund, z.B. "durch Pizza ersetzt" oder "Kalorienbudget aufgebraucht"' }
+        },
+        required: ['meal_name']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
       name: 'update_shopping_list',
       description: 'Einkaufsliste anpassen – Artikel entfernen oder Menge aendern',
       parameters: {
@@ -3377,7 +3442,7 @@ var NOVA_TOOLS = [
     type: 'function',
     function: {
       name: 'create_weekly_plan',
-      description: 'Wochenplan erstellen basierend auf Nutzerprofil und Praeferenzen',
+      description: 'Kompletten neuen Wochenplan erstellen. NUR aufrufen wenn der User EXPLIZIT einen ganzen Wochenplan will (z.B. \"erstell mir einen Wochenplan\"). NICHT bei einzelnen Rezeptwuenschen oder Mahlzeit-Aenderungen - dort einfach im Chat ein Rezept vorschlagen!',
       parameters: {
         type: 'object',
         properties: {
@@ -3488,8 +3553,48 @@ function executeTool(name, args) {
     S.todayConsumed.p += Math.round(args.protein_g || 0);
     S.todayConsumed.c += Math.round(args.carbs_g || 0);
     S.todayConsumed.f += Math.round(args.fat_g || 0);
+    // Als sichtbarer Eintrag im Tagesplan auf dem Homescreen
+    extraMeals.push({
+      name: args.meal_description,
+      kcal: Math.round(args.kcal || 0),
+      p: Math.round(args.protein_g || 0),
+      c: Math.round(args.carbs_g || 0),
+      f: Math.round(args.fat_g || 0),
+      time: (function(){ var t=new Date(); return t.getHours()+':'+(t.getMinutes()<10?'0':'')+t.getMinutes(); })()
+    });
     syncMacros();
-    return 'Mahlzeit eingetragen: ' + args.meal_description + ' (' + Math.round(args.kcal) + ' kcal). Makros aktualisiert!';
+    renderTodayMeals();
+    return 'Mahlzeit eingetragen: ' + args.meal_description + ' (' + Math.round(args.kcal) + ' kcal). Makros aktualisiert und im Tagesplan sichtbar!';
+  }
+
+  if(name === 'remove_planned_meal') {
+    var plan = NOVA_DATA.dayPlans.normal;
+    var searchName = (args.meal_name || '').toLowerCase();
+    for(var rpi=0; rpi<plan.length; rpi++) {
+      var rpr = getRecipe(plan[rpi]);
+      if(rpr && !removedPlannedMeals[rpr.id] && rpr.name.toLowerCase().indexOf(searchName) >= 0) {
+        removedPlannedMeals[rpr.id] = args.reason || 'entfernt';
+        renderTodayMeals();
+        syncMacros();
+        return '"' + rpr.name + '" (' + rpr.kcal + ' kcal) aus dem heutigen Tagesplan entfernt (' + removedPlannedMeals[rpr.id] + ').';
+      }
+    }
+    // Fuzzy: einzelne Woerter matchen
+    var words = searchName.split(/\s+/);
+    for(var rpi2=0; rpi2<plan.length; rpi2++) {
+      var rpr2 = getRecipe(plan[rpi2]);
+      if(rpr2 && !removedPlannedMeals[rpr2.id]) {
+        for(var wi=0; wi<words.length; wi++) {
+          if(words[wi].length > 3 && rpr2.name.toLowerCase().indexOf(words[wi]) >= 0) {
+            removedPlannedMeals[rpr2.id] = args.reason || 'entfernt';
+            renderTodayMeals();
+            syncMacros();
+            return '"' + rpr2.name + '" (' + rpr2.kcal + ' kcal) aus dem heutigen Tagesplan entfernt (' + removedPlannedMeals[rpr2.id] + ').';
+          }
+        }
+      }
+    }
+    return 'Keine geplante Mahlzeit namens "' + args.meal_name + '" im heutigen Plan gefunden. Aktuell geplant: ' + plan.map(function(pid){ var r=getRecipe(pid); return r&&!removedPlannedMeals[r.id]?r.name:null; }).filter(Boolean).join(', ');
   }
 
   if(name === 'update_shopping_list') {
@@ -3543,14 +3648,12 @@ function fetchWeeklyPlan(prefs) {
       if(data.week) {
         buildPlanFromSpoonacular(data.week);
       } else {
-        addMsg('Ich habe passende Rezepte gefunden! Schau dir den Wochenplan-Tab an.', false);
-        goTo('planPreview');
+        addMsg('Die Rezept-Datenbank hat gerade keinen Plan geliefert. Versuch es gleich nochmal!', false);
       }
     })
     .catch(function(err) {
       console.error('Spoonacular error:', err);
-      addMsg('Ich habe einen Wochenplan-Vorschlag fuer dich vorbereitet – schau in den Plan-Tab!', false);
-      goTo('planPreview');
+      addMsg('Die Rezept-Datenbank ist gerade nicht erreichbar. Versuch es in einem Moment nochmal!', false);
     });
 }
 
@@ -3580,6 +3683,8 @@ function buildPlanFromSpoonacular(weekData) {
 
   NOVA_DATA.nextWeekProposal.days = planDays;
   NOVA_DATA.nextWeekProposal.generatedOn = 'Gerade erstellt';
+  NOVA_DATA.nextWeekProposal.novaIntro = 'Hier ist dein neuer Wochenplan - abgestimmt auf dein Ziel von ' + (S.tKcal||1800) + ' kcal/Tag. Trainingstage haben etwas mehr Kalorien und Protein. Schau ihn dir an: Du kannst jeden Tag einzeln anpassen oder den Plan direkt bestaetigen!';
+  planConfirmed = false;
 
   addMsg('Dein Wochenplan ist fertig! Ich habe ihn auf deine ' + (S.tKcal||1800) + ' kcal/Tag abgestimmt. Schau ihn dir an und sag mir wenn du etwas aendern moechtest!', false);
 
@@ -3698,7 +3803,8 @@ function callNova(userText) {
     + '\n- User erwaehnt Training/Sport -> log_training aufrufen'
     + '\n- User will Einkaufsliste aendern -> update_shopping_list aufrufen'
     + '\n- User will eigenes Rezept speichern -> Zutaten+Portionen erfragen, dann add_custom_recipe aufrufen'
-    + '\n- User will Wochenplan -> create_weekly_plan aufrufen'
+    + '\n- User will KOMPLETTEN Wochenplan -> FALLS noch keine Allergien/Unvertraeglichkeiten bekannt: ZUERST kurz danach fragen (eine Frage!), DANN create_weekly_plan mit den Antworten aufrufen'
+    + '\n- User will EINZELNES Rezept oder eine Mahlzeit tauschen -> Rezept direkt im Chat vorschlagen, KEINEN Wochenplan erstellen! Der Wochenplan ist nur der Plan - was der User isst wird per log_meal getrackt.'
     + '\nRufe Funktionen IMMER direkt auf - frage nicht nach Erlaubnis. Kennzeichne Schaetzungen immer als Schaetzung.';
 
   chatHistory.push({ role: 'user', content: userText });
@@ -4121,7 +4227,7 @@ function renderPlanPreview() {
     + '</div>';
 
   html += '<div style="background:rgba(124,111,224,0.06);border:1px solid rgba(124,111,224,0.2);border-radius:12px;padding:10px 13px;margin-bottom:14px;font-size:11px;color:var(--t2);line-height:1.5;">'
-    + '<strong style="color:var(--p)">Hinweis:</strong> Dieser Plan basiert auf Novas interner Berechnung - noch keine externen Rezept-Quellen abgefragt. Das spart Kosten und Zeit. Erst nach deiner Bestaetigung sucht Nova die passenden Rezepte.'
+    + '<strong style="color:var(--p)">Hinweis:</strong> Dieser Plan ist auf deine Kalorien- und Proteinziele abgestimmt. Du kannst jeden Tag per ✏️ anpassen - erst nach deiner Bestaetigung wird die Einkaufsliste erstellt.'
     + '</div>';
 
   for(var i = 0; i < data.days.length; i++) {
@@ -4160,34 +4266,25 @@ function renderPlanPreview() {
 
 function editPlanDay(idx) {
   var d = NOVA_DATA.nextWeekProposal.days[idx];
-  addMsg('Ich moechte ' + d.day + ' etwas aendern - was schlaegst du als Alternative vor?', true);
   goTo('ct');
-  var ctOrb = document.getElementById('ctOrb');
-  ctOrb.classList.add('act');
-  var msgs = document.getElementById('ctmsg');
-  var td = document.createElement('div');
-  td.className = 'msg nv'; td.id = 'typ';
-  td.innerHTML = '<div class="typbbl"><div class="tyd"></div><div class="tyd"></div><div class="tyd"></div></div>';
-  msgs.appendChild(td); msgs.scrollTop = msgs.scrollHeight;
-  setTimeout(function(){
-    td.remove(); ctOrb.classList.remove('act');
-    addMsg('Klar! Fuer ' + d.day + ' koennte ich z.B. eine vegetarische Variante einplanen, oder eine schnellere Option mit weniger Zutaten. Sag mir einfach was du bevorzugst - ich passe den Plan-Vorschlag an. Das kostet noch keine externe Abfrage, ich rechne intern weiter.', false);
-  }, 1000 + Math.random()*600);
+  var msg = 'Ich moechte am ' + d.day + ' etwas an meinem Wochenplan aendern. Geplant ist: ' + d.meals.join(', ') + '. Was schlaegst du als Alternative vor?';
+  addMsg(msg, true);
+  callNova(msg);
 }
 
 function confirmPlan() {
   planConfirmed = true;
-  // Simulate: Nova now searches recipes via external API (shown to user)
   var content = document.getElementById('planPreviewContent');
   content.innerHTML += '<div class="nmsg" style="margin-top:14px;" id="searchingMsg">'
     + '<div class="nsndr">NOVA</div>'
-    + '<div class="ntxt">🔍 Ich suche jetzt passende Rezepte ueber externe Quellen (Eat Smarter, BBC Good Food, Chefkoch.de) und erstelle deine Einkaufsliste...</div>'
+    + '<div class="ntxt">✅ Plan bestaetigt! Deine Einkaufsliste wird aus den Rezept-Zutaten erstellt...</div>'
     + '</div>';
   setTimeout(function(){
     renderPlanPreview();
     updateHomeStatusLabels();
-    addMsg('Dein Wochenplan ist bestaetigt! Ich habe die Rezepte gesucht und deine Einkaufsliste fuer Freitag-Mittag fertiggestellt. Schau gerne rein - du kannst Zutaten beim Einkaufen direkt abhaken!', false);
-  }, 1400);
+    if(document.getElementById('shoppingContent')) renderShoppingList();
+    addMsg('Dein Wochenplan ist bestaetigt und deine Einkaufsliste ist fertig! Du findest sie im Listen-Tab - Zutaten kannst du beim Einkaufen direkt abhaken.', false);
+  }, 1200);
 }
 
 // ============================================================
