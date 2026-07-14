@@ -1315,393 +1315,6 @@ NOVA_DATA.conversionTrigger = {
 // APP LOGIC (v2 base)
 // ============================================================
 
-// ============================================================
-// NOVA DATA
-// ============================================================
-// ============================================================
-// NOVA DATA – Mahlzeiten, Tagebuch, Rezepte, Fitness
-// ============================================================
-
-var NOVA_DATA = {
-
-  // ---- ECHTE REZEPTE mit verifizierten Chefkoch-Links ----
-  recipes: [
-    {
-      id: 'ruehrei_toast',
-      name: 'Ruehrei mit Vollkorntoast',
-      emoji: '🥚',
-      kcal: 420, p: 28, c: 32, f: 14,
-      url: 'https://www.chefkoch.de/rezepte/576421148807970/Perfektes-Ruehrei.html',
-      ingredients: [
-        ['Eier (3 Stueck)', '180g'],
-        ['Vollkorntoast', '2 Scheiben / 80g'],
-        ['Butter', '5g'],
-        ['Blattspinat', '30g'],
-        ['Salz & Pfeffer', 'nach Geschmack']
-      ],
-      tags: ['fruehstueck', 'protein', 'schnell']
-    },
-    {
-      id: 'overnight_oats',
-      name: 'Overnight Oats mit Beeren',
-      emoji: '🫐',
-      kcal: 380, p: 18, c: 58, f: 8,
-      url: 'https://www.chefkoch.de/rezepte/2921221459130991/Overnight-Oats.html',
-      ingredients: [
-        ['Haferflocken', '80g'],
-        ['Magerquark', '100g'],
-        ['Milch (1,5%)', '150ml'],
-        ['Gemischte Beeren', '100g'],
-        ['Honig', '10g']
-      ],
-      tags: ['fruehstueck', 'meal-prep', 'low-fat']
-    },
-    {
-      id: 'protein_pancakes',
-      name: 'Protein Pancakes',
-      emoji: '🥞',
-      kcal: 440, p: 32, c: 45, f: 12,
-      url: 'https://www.chefkoch.de/rezepte/2799001435271782/Protein-Pancakes.html',
-      ingredients: [
-        ['Eier (2 Stueck)', '120g'],
-        ['Magerquark', '150g'],
-        ['Haferflocken', '50g'],
-        ['Vanille', '1 TL'],
-        ['Backpulver', '0.5 TL']
-      ],
-      tags: ['fruehstueck', 'protein', 'fitness']
-    },
-    {
-      id: 'haehnchen_quinoa',
-      name: 'Haehnchen-Bowl mit Quinoa',
-      emoji: '🍗',
-      kcal: 520, p: 48, c: 42, f: 14,
-      url: 'https://www.chefkoch.de/rezepte/2709701422782473/Haehnchenbrust-mit-Quinoa-und-Gemuse.html',
-      ingredients: [
-        ['Haehnchenbrust', '150g'],
-        ['Quinoa (trocken)', '60g'],
-        ['Cherrytomaten', '80g'],
-        ['Gurke', '60g'],
-        ['Olivenoel', '8ml'],
-        ['Zitronensaft', '10ml']
-      ],
-      tags: ['mittagessen', 'protein', 'meal-prep']
-    },
-    {
-      id: 'lachs_brokkoli',
-      name: 'Lachsfilet mit Brokkoli',
-      emoji: '🐟',
-      kcal: 480, p: 44, c: 12, f: 22,
-      url: 'https://www.chefkoch.de/rezepte/1114051216888635/Lachsfilet-mit-Brokkoli.html',
-      ingredients: [
-        ['Lachsfilet', '200g'],
-        ['Brokkoli', '200g'],
-        ['Knoblauch', '2 Zehen'],
-        ['Olivenoel', '10ml'],
-        ['Zitrone', '0.5 Stueck'],
-        ['Dill', 'nach Geschmack']
-      ],
-      tags: ['abendessen', 'omega3', 'low-carb']
-    },
-    {
-      id: 'thunfisch_bowl',
-      name: 'Thunfisch-Reis-Bowl',
-      emoji: '🥗',
-      kcal: 490, p: 42, c: 48, f: 10,
-      url: 'https://www.chefkoch.de/rezepte/2990451476086354/Thunfisch-Bowl-mit-Reis.html',
-      ingredients: [
-        ['Thunfisch (Dose)', '140g'],
-        ['Basmatireis (trocken)', '60g'],
-        ['Avocado', '0.5 Stueck'],
-        ['Edamame', '50g'],
-        ['Sojasosse', '15ml'],
-        ['Sesam', '5g']
-      ],
-      tags: ['mittagessen', 'protein', 'bowl']
-    },
-    {
-      id: 'haehnchen_suesskartoffel',
-      name: 'Haehnchen mit Suesskartoffel',
-      emoji: '🍠',
-      kcal: 510, p: 45, c: 52, f: 10,
-      url: 'https://www.chefkoch.de/rezepte/1762771297694010/Haehnchenbrust-mit-Suesskartoffeln.html',
-      ingredients: [
-        ['Haehnchenbrust', '150g'],
-        ['Suesskartoffel', '200g'],
-        ['Paprika', '1 Stueck'],
-        ['Olivenoel', '10ml'],
-        ['Kreuzkuemmel', '1 TL'],
-        ['Paprikapulver', '1 TL']
-      ],
-      tags: ['abendessen', 'protein', 'carbs']
-    },
-    {
-      id: 'rinderhackfleisch_pasta',
-      name: 'Vollkorn-Bolognese',
-      emoji: '🍝',
-      kcal: 580, p: 38, c: 65, f: 16,
-      url: 'https://www.chefkoch.de/rezepte/250691097227748/Spaghetti-Bolognese.html',
-      ingredients: [
-        ['Rinderhackfleisch (5%)', '120g'],
-        ['Vollkornnudeln', '80g'],
-        ['Passierte Tomaten', '200g'],
-        ['Zwiebel', '1 Stueck'],
-        ['Knoblauch', '2 Zehen'],
-        ['Olivenoel', '8ml']
-      ],
-      tags: ['abendessen', 'cheat', 'carbs']
-    },
-    {
-      id: 'magerquark_snack',
-      name: 'Magerquark mit Fruechten',
-      emoji: '🍓',
-      kcal: 185, p: 22, c: 18, f: 2,
-      url: 'https://www.chefkoch.de/rezepte/2345671383756573/Magerquark-mit-Beeren.html',
-      ingredients: [
-        ['Magerquark', '250g'],
-        ['Erdbeeren', '100g'],
-        ['Honig', '10g'],
-        ['Vanillemark', '0.5 TL']
-      ],
-      tags: ['snack', 'protein', 'low-fat']
-    },
-    {
-      id: 'gemuese_omelett',
-      name: 'Gemuese-Omelett',
-      emoji: '🍳',
-      kcal: 350, p: 24, c: 14, f: 18,
-      url: 'https://www.chefkoch.de/rezepte/908861194539545/Gemuese-Omelett.html',
-      ingredients: [
-        ['Eier (3 Stueck)', '180g'],
-        ['Paprika', '1 Stueck'],
-        ['Champignons', '80g'],
-        ['Feta', '30g'],
-        ['Olivenoel', '8ml'],
-        ['Krauter', 'nach Geschmack']
-      ],
-      tags: ['fruehstueck', 'abendessen', 'low-carb']
-    }
-  ],
-
-  // ---- TAGESPLAN-VORLAGEN ----
-  dayPlans: {
-    normal: ['ruehrei_toast', 'haehnchen_quinoa', 'lachs_brokkoli'],
-    training: ['protein_pancakes', 'thunfisch_bowl', 'haehnchen_suesskartoffel'],
-    cheat: ['overnight_oats', 'rinderhackfleisch_pasta', 'lachs_brokkoli'],
-    light: ['overnight_oats', 'thunfisch_bowl', 'gemuese_omelett'],
-    highprotein: ['ruehrei_toast', 'haehnchen_quinoa', 'haehnchen_suesskartoffel']
-  },
-
-  // ---- 14-TAGE TAGEBUCH (authentisch variiert) ----
-  // Trainingstage: Di + Fr
-  diary: [
-    {
-      day: 14, label: 'Vor 14 Tagen', dayOfWeek: 'Montag',
-      type: 'normal',
-      kcal: 1742, targetKcal: 1800, p: 138, c: 178, f: 58,
-      weight: 83.2, training: false,
-      novaComment: 'Guter Start in die Woche! Kalorien minimal unter Plan – perfekt fuer dein Defizit. Protein haette etwas hoeher sein koennen.',
-      mood: 'good'
-    },
-    {
-      day: 13, label: 'Vor 13 Tagen', dayOfWeek: 'Dienstag',
-      type: 'training',
-      kcal: 2080, targetKcal: 2100, p: 168, c: 212, f: 66,
-      weight: 83.0, training: true, trainingType: 'Krafttraining Oberkörper', trainingDuration: 60, caloriesBurned: 290,
-      novaComment: 'Trainingstag, top! Du hast die zusaetzlichen Kalorien nach dem Sport perfekt genutzt. Protein war auf dem Punkt fuer den Muskelaufbau.',
-      mood: 'great'
-    },
-    {
-      day: 12, label: 'Vor 12 Tagen', dayOfWeek: 'Mittwoch',
-      type: 'light',
-      kcal: 1620, targetKcal: 1800, p: 118, c: 165, f: 48,
-      weight: 82.8, training: false,
-      novaComment: 'Etwas weniger Kalorien als geplant – das passiert. Protein war etwas niedrig. Morgen gerne einen Snack mehr einplanen!',
-      mood: 'okay'
-    },
-    {
-      day: 11, label: 'Vor 11 Tagen', dayOfWeek: 'Donnerstag',
-      type: 'normal',
-      kcal: 1855, targetKcal: 1800, p: 145, c: 192, f: 61,
-      weight: 82.8, training: false,
-      novaComment: 'Minimal ueber Plan, aber Protein war stark! 55 kcal mehr sind keine Katastrophe – das ist im normalen Schwankungsbereich.',
-      mood: 'good'
-    },
-    {
-      day: 10, label: 'Vor 10 Tagen', dayOfWeek: 'Freitag',
-      type: 'training',
-      kcal: 2150, targetKcal: 2100, p: 172, c: 225, f: 68,
-      weight: 82.5, training: true, trainingType: 'Beine & Core', trainingDuration: 65, caloriesBurned: 320,
-      novaComment: 'Bester Trainingstag bisher! Kalorien und Protein top, und du hast die Trainings-Kalorien gut kompensiert. Weiter so!',
-      mood: 'great'
-    },
-    {
-      day: 9, label: 'Vor 9 Tagen', dayOfWeek: 'Samstag',
-      type: 'cheat',
-      kcal: 2280, targetKcal: 1800, p: 125, c: 265, f: 88,
-      weight: 82.6, training: false,
-      novaComment: 'Cheat Day! 480 kcal drueber – das darf mal sein. Protein war etwas niedrig, aber du hast dir eine Auszeit verdient. Naechste Woche wieder voll dabei!',
-      mood: 'okay',
-      cheatDay: true
-    },
-    {
-      day: 8, label: 'Vor 8 Tagen', dayOfWeek: 'Sonntag',
-      type: 'light',
-      kcal: 1580, targetKcal: 1800, p: 132, c: 158, f: 52,
-      weight: 82.3, training: false,
-      novaComment: 'Nach dem Cheat Day wieder zurueck auf Kurs! Weniger Kalorien als geplant – dein Koerper hat sich selbst reguliert. Das ist ein gutes Zeichen.',
-      mood: 'good'
-    },
-    // WOCHE 2 (letzte Woche)
-    {
-      day: 7, label: 'Vor 7 Tagen', dayOfWeek: 'Montag',
-      type: 'normal',
-      kcal: 1810, targetKcal: 1800, p: 148, c: 188, f: 59,
-      weight: 82.1, training: false,
-      novaComment: 'Perfekte Woche gestartet! Fast exakt auf Plan und Protein stark. Du entwickelst gute Routinen.',
-      mood: 'great'
-    },
-    {
-      day: 6, label: 'Vor 6 Tagen', dayOfWeek: 'Dienstag',
-      type: 'training',
-      kcal: 2060, targetKcal: 2100, p: 175, c: 208, f: 64,
-      weight: 81.9, training: true, trainingType: 'Krafttraining Oberkörper + Core', trainingDuration: 60, caloriesBurned: 280,
-      novaComment: 'Starker Trainingstag! Protein war heute am hoechsten – genau richtig fuer die Muskelregeneration. Weiter so!',
-      mood: 'great'
-    },
-    {
-      day: 5, label: 'Vor 5 Tagen', dayOfWeek: 'Mittwoch',
-      type: 'highprotein',
-      kcal: 1890, targetKcal: 1800, p: 162, c: 178, f: 60,
-      weight: 81.7, training: false,
-      novaComment: 'Protein heute richtig stark! Kalorien etwas ueber Plan, aber das war investiertes Protein – nicht Fett. Das ist ein Unterschied!',
-      mood: 'good'
-    },
-    {
-      day: 4, label: 'Vor 4 Tagen', dayOfWeek: 'Donnerstag',
-      type: 'normal',
-      kcal: 1760, targetKcal: 1800, p: 140, c: 182, f: 57,
-      weight: 81.6, training: false,
-      novaComment: 'Solider Tag, alles im gruenen Bereich. Du wirst konsistenter – man sieht es auch auf der Waage!',
-      mood: 'good'
-    },
-    {
-      day: 3, label: 'Vor 3 Tagen', dayOfWeek: 'Freitag',
-      type: 'training',
-      kcal: 2120, targetKcal: 2100, p: 170, c: 218, f: 70,
-      weight: 81.4, training: true, trainingType: 'Beine & Ruecken', trainingDuration: 70, caloriesBurned: 350,
-      novaComment: 'Beste Woche bisher! Trainingstag mit 70 Minuten – du hast dich gesteigert. Kalorien perfekt angepasst, Protein top.',
-      mood: 'great'
-    },
-    {
-      day: 2, label: 'Vorgestern', dayOfWeek: 'Samstag',
-      type: 'cheat',
-      kcal: 2320, targetKcal: 1800, p: 148, c: 275, f: 92,
-      weight: 81.5, training: false,
-      novaComment: 'Zweiter Cheat Day – und obwohl die Kalorien etwas hoch waren, hast du trotzdem alle Makros eingehalten! Es sei dir gegoent, so kann es weitergehen!',
-      mood: 'great',
-      cheatDay: true
-    },
-    {
-      day: 1, label: 'Gestern', dayOfWeek: 'Sonntag',
-      type: 'light',
-      kcal: 1650, targetKcal: 1800, p: 135, c: 168, f: 54,
-      weight: 81.2, training: false,
-      novaComment: 'Nach dem Wochenende direkt wieder auf Kurs. Gewicht heute bei 81,2 kg – du hast in 2 Wochen 2 kg abgenommen. Ausgezeichnet!',
-      mood: 'good'
-    }
-  ],
-
-  // ---- WOCHENRECAPS ----
-  weeklyRecaps: [
-    {
-      week: 'Woche 1 (vor 14-8 Tagen)',
-      avgKcal: 1875, targetKcal: 1800,
-      avgProtein: 143, targetProtein: 150,
-      trainingDays: 2,
-      weightStart: 83.2, weightEnd: 82.3,
-      weightLoss: 0.9,
-      cheatDays: 1,
-      novaRecap: 'Solide erste Woche! Du hast 2x trainiert und 0,9 kg abgenommen. Der Cheat Day am Samstag war okay – danach bist du direkt wieder auf Kurs gegangen. Protein war etwas unter Plan, aber das koennen wir in Woche 2 verbessern. Kalorien waren im Schnitt leicht ueber Plan – das hat das Defizit etwas verringert, aber du bist trotzdem im Minus. Weiter so!',
-      highlights: ['2x Training absolviert', 'Gewicht um 0,9 kg reduziert', 'Cheat Day gut integriert'],
-      improvements: ['Protein etwas erhoehen', 'Kalorien etwas konsequenter einhalten']
-    },
-    {
-      week: 'Woche 2 (letzte Woche)',
-      avgKcal: 1944, targetKcal: 1800,
-      avgProtein: 154, targetProtein: 150,
-      trainingDays: 2,
-      weightStart: 82.3, weightEnd: 81.2,
-      weightLoss: 1.1,
-      cheatDays: 1,
-      novaRecap: 'Deine beste Woche bisher! Protein war erstmals ueber dem Zielwert – das macht sich bei der Muskelregeneration bemerkbar. Du hast 1,1 kg abgenommen – das ist am oberen Ende des gesunden Bereichs, aber du hattest 2 Trainingstage die das unterstuetzt haben. Insgesamt in 2 Wochen 2,0 kg abgenommen – sehr gut!',
-      highlights: ['Protein-Ziel erstmals erreicht!', '1,1 kg abgenommen', 'Trainingszeit gesteigert (70 Min am Freitag)', 'Cheat Day mit guten Makros'],
-      improvements: ['Kalorien an trainingsfreien Tagen etwas reduzieren']
-    }
-  ],
-
-  // ---- KFA BEISPIELBILDER BESCHREIBUNGEN ----
-  kfaExamples: {
-    male: [
-      { range: '5-8%', label: 'Sehr definiert', desc: 'Wettkampf-Athlet, alle Muskeln sichtbar, Adern deutlich', color: '#7C6FE0' },
-      { range: '10-14%', label: 'Fit & definiert', desc: 'Bauchmuskeln sichtbar, klare Muskeldefinition, athletisch', color: '#1DB87A' },
-      { range: '15-20%', label: 'Normal-fit', desc: 'Leicht definiert, flacher Bauch, gesund und aktiv', color: '#4A90D9' },
-      { range: '20-25%', label: 'Durchschnittlich', desc: 'Etwas weicher, kein sixpack, aber gesund', color: '#F0A050' },
-      { range: '25%+', label: 'Ueber Durchschnitt', desc: 'Deutliche Fettpolster, Bauchansatz erkennbar', color: '#E24B4A' }
-    ],
-    female: [
-      { range: '15-18%', label: 'Sehr definiert', desc: 'Athletisch, Muskeln sichtbar, sehr sportlich', color: '#7C6FE0' },
-      { range: '18-22%', label: 'Fit & schlank', desc: 'Schlanke Taille, straff, sportlicher Look', color: '#1DB87A' },
-      { range: '22-28%', label: 'Normal-fit', desc: 'Gesunde Kurven, leicht straff, aktiv', color: '#4A90D9' },
-      { range: '28-34%', label: 'Durchschnittlich', desc: 'Normale Figur, weiche Konturen, gesund', color: '#F0A050' },
-      { range: '34%+', label: 'Ueber Durchschnitt', desc: 'Deutlichere Rundungen, mehr Koerperfett', color: '#E24B4A' }
-    ]
-  },
-
-  // ---- NOVA CHAT ANTWORTEN ----
-  novaReplies: {
-    hunger: [
-      'Du hast heute noch {remaining} kcal uebrig! Magerquark mit Beeren (185 kcal, 22g Protein) waere ideal.',
-      'Hunger ist ein gutes Zeichen – dein Koerper arbeitet! Greif zu etwas Proteinreichem damit du lange satt bleibst.'
-    ],
-    pizza: [
-      'Pizza ist kein Drama! Sag mir wieviele Stuecke – ich rechne es direkt in deinen Plan ein.',
-      'Erwischt! Wie viele Stuecke waren es? Ich passe den Rest des Tages sofort an.'
-    ],
-    training: [
-      'Super dass du trainiert hast! Ich berechne kurz die verbrannten Kalorien... Was hast du genau trainiert?',
-      'Stark! Wie lange und was hast du trainiert? Dann berechne ich deine Bonus-Kalorien!'
-    ],
-    cheatday: [
-      'Ein Cheat Day darf sein! Sag mir was du gegessen hast und ich schaue ob die Makros trotzdem gepasst haben.',
-      'Kein Plan ueberlebt den ersten Kontakt mit der Schokolade – das ist okay! Lass uns schauen wie wir den Tag noch retten koennen.'
-    ],
-    sport_calories: [
-      'Du hast {cal} kcal verbrannt! Das bedeutet du darfst heute {cal} kcal mehr essen – ich habe deinen Plan schon angepasst.',
-      'Super Training! {cal} kcal verbrannt. Als Belohnung darfst du heute {cal} kcal extra essen. Wie waere ein Protein-Shake oder Magerquark nach dem Training?'
-    ],
-    motivation: [
-      'Du machst das wirklich gut! Deine Konsistenz der letzten 2 Wochen zeigt sich auf der Waage.',
-      'Weiter so! Jeder Tag zaehlt – und du zahlst gerade auf dein Ziel ein.',
-      'Erinnere dich warum du angefangen hast. Du bist auf einem sehr guten Weg!'
-    ],
-    plan_adjust: [
-      'Kein Problem! Ich passe deinen Plan sofort an. Was hast du gegessen?',
-      'Verstanden! Ich berechne die Naehrwerte und aktualisiere deinen Tagesplan.'
-    ]
-  },
-
-  // ---- FITNESS KALORIEN BERECHNUNG ----
-  exerciseCalories: {
-    krafttraining: { perMinute: 5.5, label: 'Krafttraining' },
-    hiit: { perMinute: 9.0, label: 'HIIT' },
-    cardio: { perMinute: 7.0, label: 'Cardio' },
-    yoga: { perMinute: 3.5, label: 'Yoga' },
-    radfahren: { perMinute: 8.0, label: 'Radfahren' },
-    schwimmen: { perMinute: 8.5, label: 'Schwimmen' },
-    laufen: { perMinute: 10.0, label: 'Laufen' }
-  }
-};
 
 // ============================================================
 // APP LOGIC
@@ -3143,10 +2756,9 @@ function showNovaIntro() {
   // Untertitel sofort starten
   showIntroSubtitle(0);
 
-  // TTS SYNCHRON starten - showNovaIntro() wird direkt vom Button-Tap
-  // aufgerufen, das ist die gueltige iOS User-Interaction.
-  // Kein setTimeout - der Interaction-Kontext verfaellt sonst!
-  novaSpeak(introSpeechTexts);
+  // OpenAI "nova"-Stimme (natuerlich). Audio.play() ist durch den
+  // Button-Tap der showNovaIntro() ausloest iOS-seitig erlaubt.
+  introSpeakOpenAI(introSpeechTexts);
 }
 
 function showIntroSubtitle(idx) {
@@ -3181,6 +2793,37 @@ function showIntroSubtitle(idx) {
       }, pauseMs);
     }
   }, 38); // ~38ms pro Buchstabe = fluessig aber lesbar
+}
+
+// Intro-Audio global, damit es beim Verlassen gestoppt werden kann
+var introAudio = null;
+
+// Intro mit OpenAI "nova"-Stimme sprechen (natuerlicher als Browser-TTS)
+function introSpeakOpenAI(texts) {
+  if(!OPENAI_KEY || OPENAI_KEY.length < 20) { novaSpeak(texts); return; }
+  var fullText = texts.join(' ');
+  fetch('https://api.openai.com/v1/audio/speech', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + OPENAI_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'tts-1', voice: 'nova', input: fullText, speed: 1.0 })
+  })
+  .then(function(r) {
+    if(!r.ok) throw new Error('TTS HTTP ' + r.status);
+    return r.blob();
+  })
+  .then(function(blob) {
+    var url = URL.createObjectURL(blob);
+    introAudio = new Audio(url);
+    introAudio.onended = function() { URL.revokeObjectURL(url); introAudio = null; };
+    introAudio.play().catch(function(e) {
+      console.warn('Intro-Audio play blockiert:', e);
+      novaSpeak(texts); // Fallback Browser-TTS
+    });
+  })
+  .catch(function(err) {
+    console.warn('OpenAI TTS Intro fehlgeschlagen:', err);
+    novaSpeak(texts); // Fallback Browser-TTS
+  });
 }
 
 // iOS TTS-Unlock: stille Utterance schaltet Speech-Engine frei
@@ -3236,7 +2879,12 @@ function closeIntroAndStart() {
   var modal = document.getElementById('novaIntroModal');
   modal.style.display = 'none';
   if(introTypeTimer) clearTimeout(introTypeTimer);
+  // ALLES stoppen: Browser-TTS + OpenAI-Audio
   window.speechSynthesis && window.speechSynthesis.cancel();
+  if(introAudio) {
+    try { introAudio.pause(); introAudio.currentTime = 0; } catch(e) {}
+    introAudio = null;
+  }
   goTo('ob');
   renderStep();
 }
@@ -3384,6 +3032,24 @@ var NOVA_TOOLS = [
           product_name: { type: 'string', description: 'Produktname z.B. "Capri Eis" oder "Snickers"' }
         },
         required: ['product_name']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'correct_last_meal',
+      description: 'Den ZULETZT geloggten Mahlzeit-Eintrag korrigieren (Werte ersetzen, NICHT neu anlegen). IMMER nutzen wenn der User eine bereits geloggte Mahlzeit praezisiert oder korrigiert - NIEMALS log_meal ein zweites Mal fuer dieselbe Mahlzeit aufrufen, das erzeugt Doppeleintraege!',
+      parameters: {
+        type: 'object',
+        properties: {
+          meal_description: { type: 'string', description: 'Korrigierte Beschreibung' },
+          kcal: { type: 'number', description: 'Korrigierte Kalorien' },
+          protein_g: { type: 'number', description: 'Korrigiertes Protein in Gramm' },
+          carbs_g: { type: 'number', description: 'Korrigierte Kohlenhydrate in Gramm' },
+          fat_g: { type: 'number', description: 'Korrigiertes Fett in Gramm' }
+        },
+        required: ['kcal']
       }
     }
   },
@@ -3567,6 +3233,32 @@ function executeTool(name, args) {
     return 'Mahlzeit eingetragen: ' + args.meal_description + ' (' + Math.round(args.kcal) + ' kcal). Makros aktualisiert und im Tagesplan sichtbar!';
   }
 
+  if(name === 'correct_last_meal') {
+    if(extraMeals.length === 0) {
+      return 'Kein geloggter Eintrag zum Korrigieren vorhanden. Nutze log_meal fuer einen neuen Eintrag.';
+    }
+    var last = extraMeals[extraMeals.length - 1];
+    // Alte Werte aus Tageskonsum herausrechnen
+    S.todayConsumed.kcal -= last.kcal;
+    S.todayConsumed.p -= last.p;
+    S.todayConsumed.c -= last.c;
+    S.todayConsumed.f -= last.f;
+    // Neue Werte setzen
+    last.kcal = Math.round(args.kcal || last.kcal);
+    last.p = Math.round(args.protein_g != null ? args.protein_g : last.p);
+    last.c = Math.round(args.carbs_g != null ? args.carbs_g : last.c);
+    last.f = Math.round(args.fat_g != null ? args.fat_g : last.f);
+    if(args.meal_description) last.name = args.meal_description;
+    // Neue Werte in Tageskonsum einrechnen
+    S.todayConsumed.kcal += last.kcal;
+    S.todayConsumed.p += last.p;
+    S.todayConsumed.c += last.c;
+    S.todayConsumed.f += last.f;
+    syncMacros();
+    renderTodayMeals();
+    return 'Eintrag korrigiert: "' + last.name + '" jetzt mit ' + last.kcal + ' kcal (' + last.p + 'g P, ' + last.c + 'g C, ' + last.f + 'g F). Kein Doppeleintrag.';
+  }
+
   if(name === 'remove_planned_meal') {
     var plan = NOVA_DATA.dayPlans.normal;
     var searchName = (args.meal_name || '').toLowerCase();
@@ -3710,6 +3402,8 @@ function generatePlanWithGPT(prefs) {
         trainingNote: isTraining ? 'Trainingstag: +250 kcal, extra Protein' : null
       });
     }
+    if(!NOVA_DATA.nextWeekProposal) NOVA_DATA.nextWeekProposal = {};
+    if(!NOVA_DATA.shoppingList) NOVA_DATA.shoppingList = { categories: [], novaNote: '' };
     NOVA_DATA.nextWeekProposal.days = planDays;
     NOVA_DATA.nextWeekProposal.generatedOn = 'Gerade erstellt';
     NOVA_DATA.nextWeekProposal.novaIntro = 'Hier ist dein neuer Wochenplan - abgestimmt auf dein Ziel von ' + targetCal + ' kcal/Tag. Trainingstage haben mehr Kalorien und Protein. Du kannst jeden Tag anpassen oder direkt bestaetigen!';
@@ -3765,6 +3459,7 @@ function buildPlanFromSpoonacular(weekData) {
     });
   }
 
+  if(!NOVA_DATA.nextWeekProposal) NOVA_DATA.nextWeekProposal = {};
   NOVA_DATA.nextWeekProposal.days = planDays;
   NOVA_DATA.nextWeekProposal.generatedOn = 'Gerade erstellt';
   NOVA_DATA.nextWeekProposal.novaIntro = 'Hier ist dein neuer Wochenplan - abgestimmt auf dein Ziel von ' + (S.tKcal||1800) + ' kcal/Tag. Trainingstage haben etwas mehr Kalorien und Protein. Schau ihn dir an: Du kannst jeden Tag einzeln anpassen oder den Plan direkt bestaetigen!';
@@ -3915,8 +3610,10 @@ function callNova(userText) {
     var systemPrompt = NOVA_SYSTEM_PROMPT
       + '\n\n' + userCtx
       + '\n\nDu hast direkten Zugriff auf die App ueber Funktionen. NUTZE SIE AKTIV:'
-      + '\n- User nennt KONKRETES Produkt (Capri-Eis, Snickers, Restaurantpizza) -> ZUERST lookup_food_database, DANACH IMMER log_meal mit den Werten aufrufen! NIE nur sagen "ich logge das" ohne log_meal wirklich aufzurufen!'
-      + '\n- User nennt VAGES Essen (ein Eis, ein Stueck Kuchen) -> log_meal mit Schaetzung UND transparent sagen: "Ich schaetze ca. X kcal - nenn mir das genaue Produkt, dann pruefe ich es exakt!"'
+      + '\n- User nennt MARKEN-/FERTIGPRODUKT vage (TK-Pizza, Fertiggericht, Proteinriegel) -> NOCH NICHT loggen! ZUERST fragen: "Welches Produkt genau war das? (z.B. Marke + Sorte)" Erst nach der Antwort: lookup_food_database -> log_meal mit echten Werten.'
+      + '\n- User nennt KONKRETES Produkt (Dr. Oetker Ristorante Salami, Snickers) -> ZUERST lookup_food_database, DANACH IMMER log_meal mit den Werten! NIE nur sagen "ich logge das" ohne log_meal wirklich aufzurufen!'
+      + '\n- User kennt das Produkt nicht oder es ist simpel (Apfel, Banane, selbstgekocht) -> log_meal mit Schaetzung und transparent als Schaetzung kennzeichnen.'
+      + '\n- User KORRIGIERT/praezisiert eine bereits geloggte Mahlzeit -> correct_last_meal aufrufen (ersetzt die Werte). NIEMALS log_meal erneut fuer dieselbe Mahlzeit - das erzeugt Doppeleintraege!'
       + '\n- User hat ein REZEPT MIT GETAUSCHTER ZUTAT gegessen (z.B. Lachsfilet-Rezept aber mit Thunfisch) -> Das KOMPLETTE Rezept loggen, nicht nur die neue Zutat! Nimm die bekannten Rezept-Makros, ziehe die alte Zutat ab, rechne die neue in gleicher Menge drauf. Dann log_meal mit dem Gesamtergebnis + remove_planned_meal fuer das Original.'
       + '\n- User erwaehnt Gewicht -> log_weight aufrufen'
       + '\n- User erwaehnt Training/Sport -> log_training aufrufen'
