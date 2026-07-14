@@ -3093,21 +3093,10 @@ function showNovaIntro() {
   // Untertitel sofort starten
   showIntroSubtitle(0);
 
-  // iOS: TTS erst nach erstem Tap (Autoplay-Policy)
-  // Auf iOS kein automatisches Audio erlaubt ohne User-Interaction
-  var ttsStarted = false;
-  var modal2 = document.getElementById('novaIntroModal');
-  function startTTSOnTap() {
-    if(ttsStarted) return;
-    ttsStarted = true;
-    modal2.removeEventListener('touchstart', startTTSOnTap);
-    novaSpeak(introSpeechTexts);
-  }
-  modal2.addEventListener('touchstart', startTTSOnTap, { passive: true });
-  // Desktop: sofort sprechen
-  if(!/iphone|ipad|ipod|android/i.test(navigator.userAgent)) {
-    setTimeout(function() { novaSpeak(introSpeechTexts); }, 300);
-  }
+  // TTS SYNCHRON starten - showNovaIntro() wird direkt vom Button-Tap
+  // aufgerufen, das ist die gueltige iOS User-Interaction.
+  // Kein setTimeout - der Interaction-Kontext verfaellt sonst!
+  novaSpeak(introSpeechTexts);
 }
 
 function showIntroSubtitle(idx) {
@@ -3142,6 +3131,18 @@ function showIntroSubtitle(idx) {
       }, pauseMs);
     }
   }, 38); // ~38ms pro Buchstabe = fluessig aber lesbar
+}
+
+// iOS TTS-Unlock: stille Utterance schaltet Speech-Engine frei
+var ttsUnlocked = false;
+function unlockTTS() {
+  if(ttsUnlocked || !window.speechSynthesis) return;
+  try {
+    var u = new SpeechSynthesisUtterance(' ');
+    u.volume = 0;
+    window.speechSynthesis.speak(u);
+    ttsUnlocked = true;
+  } catch(e) {}
 }
 
 function novaSpeak(texts) {
@@ -3307,17 +3308,32 @@ var NOVA_TOOLS = [
     type: 'function',
     function: {
       name: 'log_meal',
-      description: 'Gegessene Mahlzeit oder Lebensmittel eintragen und Makros aktualisieren',
+      description: 'Gegessene Mahlzeit oder Lebensmittel eintragen und Makros aktualisieren. Bei vagen Angaben (z.B. "ein Eis") zuerst transparent schaetzen und fragen ob der User das genaue Produkt nennen kann. Bei konkreten Produktnamen ZUERST lookup_food_database aufrufen!',
       parameters: {
         type: 'object',
         properties: {
           meal_description: { type: 'string', description: 'Beschreibung der Mahlzeit' },
-          kcal: { type: 'number', description: 'Geschaetzte Kalorien' },
+          kcal: { type: 'number', description: 'Kalorien (aus Datenbank oder Schaetzung)' },
           protein_g: { type: 'number', description: 'Protein in Gramm' },
           carbs_g: { type: 'number', description: 'Kohlenhydrate in Gramm' },
-          fat_g: { type: 'number', description: 'Fett in Gramm' }
+          fat_g: { type: 'number', description: 'Fett in Gramm' },
+          is_estimate: { type: 'boolean', description: 'true wenn geschaetzt, false wenn aus Datenbank' }
         },
         required: ['meal_description', 'kcal']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'lookup_food_database',
+      description: 'Naehrwerte eines konkreten Produkts in der Open Food Facts Datenbank nachschlagen. IMMER aufrufen wenn der User ein konkretes Produkt nennt (z.B. Capri-Eis, Snickers, Nutella). Danach mit den echten Werten log_meal aufrufen.',
+      parameters: {
+        type: 'object',
+        properties: {
+          product_name: { type: 'string', description: 'Produktname z.B. "Capri Eis" oder "Snickers"' }
+        },
+        required: ['product_name']
       }
     }
   },
@@ -3334,6 +3350,26 @@ var NOVA_TOOLS = [
           reason: { type: 'string', description: 'Grund der Aenderung' }
         },
         required: ['action', 'item_name']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'add_custom_recipe',
+      description: 'Eigenes Rezept des Users dauerhaft in der App speichern. Aufrufen wenn der User ein eigenes Rezept hinzufuegen/eintragen/speichern moechte. VORHER im Gespraech Zutaten und Portionen erfragen falls nicht genannt. Naehrwerte pro Portion selbst berechnen (bei Markenprodukten vorher lookup_food_database nutzen).',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Name des Rezepts' },
+          kcal: { type: 'number', description: 'Kalorien pro Portion' },
+          protein_g: { type: 'number', description: 'Protein pro Portion in Gramm' },
+          carbs_g: { type: 'number', description: 'Kohlenhydrate pro Portion in Gramm' },
+          fat_g: { type: 'number', description: 'Fett pro Portion in Gramm' },
+          ingredients: { type: 'string', description: 'Zutatenliste als Text, z.B. "3 Eier, 100g Haferflocken, 200ml Milch"' },
+          emoji: { type: 'string', description: 'Ein passendes Emoji fuer das Rezept' }
+        },
+        required: ['name', 'kcal']
       }
     }
   },
@@ -3372,7 +3408,62 @@ var NOVA_TOOLS = [
 // ============================================================
 // FUNCTION EXECUTION – Tool-Ausfuehrung
 // ============================================================
+// Gibt String ODER Promise<String> zurueck
 function executeTool(name, args) {
+  if(name === 'lookup_food_database') {
+    // Open Food Facts API - kostenlos, kein Key noetig
+    var query = encodeURIComponent(args.product_name || '');
+    var url = 'https://world.openfoodfacts.org/cgi/search.pl?search_terms=' + query
+      + '&search_simple=1&action=process&json=1&page_size=3&fields=product_name,nutriments,quantity';
+    return fetch(url)
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if(data.products && data.products.length > 0) {
+          var p = data.products[0];
+          var n = p.nutriments || {};
+          var kcal100 = n['energy-kcal_100g'] || n['energy-kcal'] || 0;
+          var prot100 = n['proteins_100g'] || 0;
+          var carb100 = n['carbohydrates_100g'] || 0;
+          var fat100 = n['fat_100g'] || 0;
+          return 'Datenbank-Treffer: "' + (p.product_name || args.product_name) + '"'
+            + (p.quantity ? ' (' + p.quantity + ')' : '')
+            + ' - pro 100g: ' + Math.round(kcal100) + ' kcal, '
+            + Math.round(prot100*10)/10 + 'g Protein, '
+            + Math.round(carb100*10)/10 + 'g Carbs, '
+            + Math.round(fat100*10)/10 + 'g Fett. '
+            + 'Rechne auf die Portionsgroesse um und rufe log_meal mit is_estimate=false auf.';
+        }
+        return 'Kein Datenbank-Treffer fuer "' + args.product_name + '". Schaetze die Werte selbst und kennzeichne mit is_estimate=true.';
+      })
+      .catch(function(err) {
+        return 'Datenbank nicht erreichbar. Schaetze die Werte selbst (is_estimate=true).';
+      });
+  }
+
+  if(name === 'add_custom_recipe') {
+    var ingList = [];
+    if(args.ingredients) {
+      var parts = args.ingredients.split(',');
+      for(var pi=0; pi<parts.length; pi++) {
+        ingList.push([parts[pi].trim(), '']);
+      }
+    }
+    var newRecipe = {
+      id: 'custom_' + Date.now(),
+      name: args.name,
+      emoji: args.emoji || '🍽️',
+      kcal: Math.round(args.kcal || 0),
+      p: Math.round(args.protein_g || 0),
+      c: Math.round(args.carbs_g || 0),
+      f: Math.round(args.fat_g || 0),
+      url: '',
+      ingredients: ingList,
+      isCustom: true
+    };
+    NOVA_DATA.recipes.push(newRecipe);
+    return 'Rezept "' + args.name + '" gespeichert (' + newRecipe.kcal + ' kcal, ' + newRecipe.p + 'g Protein pro Portion). Es ist jetzt in der App verfuegbar und kann in den Tagesplan aufgenommen werden.';
+  }
+
   if(name === 'log_training') {
     var perMin = { krafttraining:5.5, hiit:9.0, laufen:10.0, radfahren:8.0, schwimmen:8.5, yoga:3.5, cardio:7.0 };
     var typeKey = args.type.toLowerCase().replace(/\s/g,'');
@@ -3596,15 +3687,23 @@ function callNova(userText) {
   td.innerHTML = '<div class="typbbl"><div class="tyd"></div><div class="tyd"></div><div class="tyd"></div></div>';
   msgs.appendChild(td); msgs.scrollTop = msgs.scrollHeight;
 
-  // Nutzerprofil als Kontext
+  // Nutzerprofil + Live-App-Status als Kontext
   var userCtx = buildUserContext();
-  var systemPrompt = NOVA_SYSTEM_PROMPT + '\n\n' + userCtx;
+  var systemPrompt = NOVA_SYSTEM_PROMPT
+    + '\n\n' + userCtx
+    + '\n\nDu hast direkten Zugriff auf die App ueber Funktionen. NUTZE SIE AKTIV:'
+    + '\n- User nennt KONKRETES Produkt (Capri-Eis, Snickers, Nutella) -> ZUERST lookup_food_database, DANN log_meal mit echten Werten'
+    + '\n- User nennt VAGES Essen (ein Eis, ein Stueck Kuchen) -> log_meal mit Schaetzung UND transparent sagen: "Ich schaetze ca. X kcal - nenn mir das genaue Produkt, dann pruefe ich es exakt!"'
+    + '\n- User erwaehnt Gewicht -> log_weight aufrufen'
+    + '\n- User erwaehnt Training/Sport -> log_training aufrufen'
+    + '\n- User will Einkaufsliste aendern -> update_shopping_list aufrufen'
+    + '\n- User will eigenes Rezept speichern -> Zutaten+Portionen erfragen, dann add_custom_recipe aufrufen'
+    + '\n- User will Wochenplan -> create_weekly_plan aufrufen'
+    + '\nRufe Funktionen IMMER direkt auf - frage nicht nach Erlaubnis. Kennzeichne Schaetzungen immer als Schaetzung.';
 
-  // Verlauf aktualisieren (max 10 Nachrichten)
   chatHistory.push({ role: 'user', content: userText });
   if(chatHistory.length > 10) chatHistory = chatHistory.slice(-10);
 
-  // OpenAI GPT-4o Mini (unterstuetzt Browser-CORS direkt)
   fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -3613,10 +3712,12 @@ function callNova(userText) {
     },
     body: JSON.stringify({
       model: 'gpt-4o-mini',
-      max_tokens: 300,
+      max_tokens: 400,
       messages: [
         { role: 'system', content: systemPrompt }
-      ].concat(chatHistory)
+      ].concat(chatHistory),
+      tools: NOVA_TOOLS,
+      tool_choice: 'auto'
     })
   })
   .then(function(r) {
@@ -3625,23 +3726,75 @@ function callNova(userText) {
   })
   .then(function(data) {
     var typEl = document.getElementById('typingIndicator');
+
+    var choice = data.choices && data.choices[0];
+    if(!choice) throw new Error('Keine Antwort erhalten');
+
+    var message = choice.message;
+
+    // FUNCTION CALLING: GPT will Aktionen ausfuehren (sync + async Tools)
+    if(message.tool_calls && message.tool_calls.length > 0) {
+      var toolPromises = message.tool_calls.map(function(tc) {
+        var args = {};
+        try { args = JSON.parse(tc.function.arguments); } catch(e) {}
+        var result = executeTool(tc.function.name, args);
+        // Ergebnis kann String oder Promise sein
+        return Promise.resolve(result).then(function(resolved) {
+          return { role: 'tool', tool_call_id: tc.id, content: resolved };
+        });
+      });
+
+      Promise.all(toolPromises).then(function(toolResults) {
+      var actionSummaries = toolResults.map(function(tr){ return tr.content; });
+
+      // Zweiter API-Call: GPT formuliert finale Antwort mit Tool-Ergebnissen
+      chatHistory.push(message);
+      for(var j=0; j<toolResults.length; j++) chatHistory.push(toolResults[j]);
+
+      fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + OPENAI_KEY
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          max_tokens: 300,
+          messages: [
+            { role: 'system', content: systemPrompt }
+          ].concat(chatHistory)
+        })
+      })
+      .then(function(r2) { return r2.json(); })
+      .then(function(data2) {
+        if(typEl) typEl.remove();
+        if(ctOrb) ctOrb.classList.remove('act');
+        var reply = 'Erledigt!';
+        if(data2.choices && data2.choices[0] && data2.choices[0].message) {
+          reply = data2.choices[0].message.content || actionSummaries.join(' ');
+        }
+        chatHistory.push({ role: 'assistant', content: reply });
+        addMsg(reply, false);
+        speakNovaReply(reply);
+      })
+      .catch(function() {
+        if(typEl) typEl.remove();
+        if(ctOrb) ctOrb.classList.remove('act');
+        var reply = actionSummaries.join(' ');
+        addMsg(reply, false);
+        speakNovaReply(reply);
+      });
+      }); // Ende Promise.all
+      return;
+    }
+
+    // Normale Text-Antwort ohne Aktion
     if(typEl) typEl.remove();
     if(ctOrb) ctOrb.classList.remove('act');
 
-    var replyText = '';
-    if(data.choices && data.choices[0] && data.choices[0].message) {
-      replyText = data.choices[0].message.content;
-    } else {
-      replyText = 'Ich hatte kurz ein Problem – versuch es nochmal!';
-    }
-
-    // Aktionen aus User-Text erkennen und ausfuehren
-    detectAndExecuteAction(userText, replyText);
-
+    var replyText = message.content || 'Ich bin gleich wieder da!';
     chatHistory.push({ role: 'assistant', content: replyText });
     addMsg(replyText, false);
-
-    // Nova-Stimme
     speakNovaReply(replyText);
   })
   .catch(function(err) {
@@ -3653,11 +3806,11 @@ function callNova(userText) {
     if(!OPENAI_KEY || OPENAI_KEY.length < 20) {
       addMsg('⚠️ Kein API-Key gefunden. Tippe oben auf ⚙️ um deinen Key einzugeben.', false);
     } else if(err.message && err.message.indexOf('401') >= 0) {
-      addMsg('⚠️ API-Key ungueltig oder abgelaufen. Tippe auf ⚙️ und gib deinen neuen Key ein.', false);
+      addMsg('⚠️ API-Key ungueltig. Tippe auf ⚙️ und gib deinen Key neu ein.', false);
     } else if(err.message && err.message.indexOf('429') >= 0) {
-      addMsg('⚠️ Zu viele Anfragen – kurz warten und nochmal versuchen.', false);
+      addMsg('⚠️ API-Limit erreicht – Guthaben auf platform.openai.com pruefen.', false);
     } else {
-      addMsg('⚠️ Verbindungsfehler (' + (err.message||'unbekannt') + '). Bitte Internetverbindung pruefen und nochmal versuchen.', false);
+      addMsg('⚠️ Verbindungsfehler: ' + (err.message||'unbekannt'), false);
     }
   });
 }
@@ -4273,8 +4426,9 @@ function saveKeysAndStart() {
   var btn = document.querySelector('#setup .btnp');
   if(btn) { btn.textContent = '✓ Gespeichert!'; setTimeout(function(){ btn.textContent = 'Keys speichern & starten'; }, 1500); }
 
-  // Mikrofon direkt nach User-Tap vorinitialisieren (iOS erlaubt das hier)
+  // Mikrofon + TTS direkt nach User-Tap freischalten (iOS erlaubt das hier)
   warmUpMicrophone();
+  unlockTTS();
 
   goTo('wl');
 }
