@@ -3156,13 +3156,33 @@ function executeTool(name, args) {
           var prot100 = n['proteins_100g'] || 0;
           var carb100 = n['carbohydrates_100g'] || 0;
           var fat100 = n['fat_100g'] || 0;
-          return 'Datenbank-Treffer: "' + (p.product_name || args.product_name) + '"'
-            + (p.quantity ? ' (' + p.quantity + ')' : '')
+
+          var result = 'Datenbank-Treffer: "' + (p.product_name || args.product_name) + '"'
             + ' - pro 100g: ' + Math.round(kcal100) + ' kcal, '
             + Math.round(prot100*10)/10 + 'g Protein, '
             + Math.round(carb100*10)/10 + 'g Carbs, '
-            + Math.round(fat100*10)/10 + 'g Fett. '
-            + 'Rechne auf die Portionsgroesse um und rufe log_meal mit is_estimate=false auf.';
+            + Math.round(fat100*10)/10 + 'g Fett.';
+
+          // Packungsgroesse parsen und Gesamtwerte FERTIG ausrechnen
+          var grams = 0;
+          if(p.quantity) {
+            var qm = String(p.quantity).match(/([\d.,]+)\s*(g|kg)/i);
+            if(qm) {
+              grams = parseFloat(qm[1].replace(',','.'));
+              if(qm[2].toLowerCase() === 'kg') grams *= 1000;
+            }
+          }
+          if(grams > 0) {
+            result += ' Packungsgroesse: ' + Math.round(grams) + 'g.'
+              + ' GANZE PACKUNG = ' + Math.round(kcal100*grams/100) + ' kcal, '
+              + Math.round(prot100*grams/100) + 'g P, '
+              + Math.round(carb100*grams/100) + 'g C, '
+              + Math.round(fat100*grams/100) + 'g F.'
+              + ' Nutze EXAKT diese Gesamtwerte fuer log_meal wenn der User die ganze Packung gegessen hat - NICHT selbst umrechnen!';
+          } else {
+            result += ' Keine Packungsgroesse hinterlegt - frage den User nach der Menge in Gramm oder nutze uebliche Portionsgroessen (TK-Pizza: 320-400g).';
+          }
+          return result;
         }
         return 'Kein Datenbank-Treffer fuer "' + args.product_name + '". Schaetze die Werte selbst und kennzeichne mit is_estimate=true.';
       })
@@ -3230,7 +3250,8 @@ function executeTool(name, args) {
     });
     syncMacros();
     renderTodayMeals();
-    return 'Mahlzeit eingetragen: ' + args.meal_description + ' (' + Math.round(args.kcal) + ' kcal). Makros aktualisiert und im Tagesplan sichtbar!';
+    var restNow = (S.tKcal + (S.bonusKcal||0)) - S.todayConsumed.kcal;
+    return 'Mahlzeit eingetragen: ' + args.meal_description + ' (' + Math.round(args.kcal) + ' kcal). RESTBUDGET HEUTE: ' + restNow + ' kcal. Nenne dem User EXAKT diesen Wert - nicht selbst rechnen!';
   }
 
   if(name === 'correct_last_meal') {
@@ -3256,7 +3277,8 @@ function executeTool(name, args) {
     S.todayConsumed.f += last.f;
     syncMacros();
     renderTodayMeals();
-    return 'Eintrag korrigiert: "' + last.name + '" jetzt mit ' + last.kcal + ' kcal (' + last.p + 'g P, ' + last.c + 'g C, ' + last.f + 'g F). Kein Doppeleintrag.';
+    var restNow2 = (S.tKcal + (S.bonusKcal||0)) - S.todayConsumed.kcal;
+    return 'Eintrag korrigiert: "' + last.name + '" jetzt mit ' + last.kcal + ' kcal (' + last.p + 'g P, ' + last.c + 'g C, ' + last.f + 'g F). Kein Doppeleintrag. RESTBUDGET HEUTE: ' + restNow2 + ' kcal - nenne dem User EXAKT diesen Wert.';
   }
 
   if(name === 'remove_planned_meal') {
@@ -3621,7 +3643,8 @@ function callNova(userText) {
       + '\n- User will eigenes Rezept speichern -> Zutaten+Portionen erfragen, dann add_custom_recipe aufrufen'
       + '\n- User will KOMPLETTEN WOCHENplan -> FALLS Allergien unbekannt: erst fragen, dann create_weekly_plan. Der TAGESplan existiert bereits in der App - dafuer NIE create_weekly_plan aufrufen!'
       + '\n- User will EINZELNES Rezept oder Mahlzeit tauschen -> Rezept im Chat vorschlagen, KEINEN Wochenplan erstellen!'
-      + '\nREGEL: Wenn du sagst dass du etwas eintraegst/loggst/anpasst, MUSS im selben Zug der passende Funktionsaufruf erfolgen. Worte ohne Funktionsaufruf aendern NICHTS in der App!';
+      + '\nREGEL: Wenn du sagst dass du etwas eintraegst/loggst/anpasst, MUSS im selben Zug der passende Funktionsaufruf erfolgen. Worte ohne Funktionsaufruf aendern NICHTS in der App!'
+      + '\nRECHEN-REGEL: Rechne Kalorien-Restbudgets NIEMALS selbst aus. Nutze EXAKT die Werte die dir Funktions-Ergebnisse (RESTBUDGET HEUTE) oder der App-Kontext liefern. Bei Packungsangaben aus der Datenbank: nutze die vorgerechneten GANZE-PACKUNG-Werte, multipliziere nie selbst.';
 
     fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
