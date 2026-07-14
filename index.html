@@ -3636,25 +3636,109 @@ function executeTool(name, args) {
 // SPOONACULAR – Wochenplan erstellen
 // ============================================================
 function fetchWeeklyPlan(prefs) {
-  addMsg('Ich suche passende Rezepte fuer dich... ⏳', false);
+  addMsg('Ich erstelle deinen Wochenplan... ⏳', false);
   var diet = prefs && prefs.diet_type === 'vegetarisch' ? '&diet=vegetarian' : '';
   var exclude = prefs && prefs.allergies ? '&excludeIngredients=' + encodeURIComponent(prefs.allergies) : '';
   var targetCal = S.tKcal || 1800;
   var url = 'https://api.spoonacular.com/mealplanner/generate?timeFrame=week&targetCalories=' + targetCal + diet + exclude + '&apiKey=' + SPOONACULAR_KEY;
 
   fetch(url)
-    .then(function(r) { return r.json(); })
+    .then(function(r) {
+      if(!r.ok) throw new Error('Spoonacular HTTP ' + r.status);
+      return r.json();
+    })
     .then(function(data) {
       if(data.week) {
         buildPlanFromSpoonacular(data.week);
       } else {
-        addMsg('Die Rezept-Datenbank hat gerade keinen Plan geliefert. Versuch es gleich nochmal!', false);
+        console.warn('Spoonacular ohne week:', data);
+        generatePlanWithGPT(prefs);
       }
     })
     .catch(function(err) {
       console.error('Spoonacular error:', err);
-      addMsg('Die Rezept-Datenbank ist gerade nicht erreichbar. Versuch es in einem Moment nochmal!', false);
+      // Fallback: GPT erstellt den Plan selbst (deutsch + zuverlaessig)
+      generatePlanWithGPT(prefs);
     });
+}
+
+// GPT-Fallback: erstellt deutschen Wochenplan + Einkaufsliste als JSON
+function generatePlanWithGPT(prefs) {
+  var targetCal = S.tKcal || 1800;
+  var targetP = S.tP || 140;
+  var trainDays = (S.trainingDays && S.trainingDays.length) ? S.trainingDays.join(', ') : 'keine';
+  var allergyNote = prefs && prefs.allergies ? ' KEINE Zutaten mit: ' + prefs.allergies + '.' : '';
+  var dietNote = prefs && prefs.diet_type === 'vegetarisch' ? ' Alle Gerichte vegetarisch.' : '';
+
+  var prompt = 'Erstelle einen deutschen 7-Tage-Ernaehrungsplan. Tagesziel: ' + targetCal + ' kcal, ' + targetP + 'g Protein. Trainingstage (+250 kcal, mehr Protein): ' + trainDays + '.' + allergyNote + dietNote
+    + ' Antworte NUR mit validem JSON, kein Markdown, keine Backticks: '
+    + '{"days":[{"day":"Montag","meals":["Fruehstuecksname (450 kcal)","Mittagsname (600 kcal)","Abendname (550 kcal)"]}],'
+    + '"shopping":[{"cat":"Obst & Gemuese","items":["500g Brokkoli","3 Paprika"]},{"cat":"Fleisch & Fisch","items":[]},{"cat":"Milchprodukte & Eier","items":[]},{"cat":"Trockenware","items":[]},{"cat":"Sonstiges","items":[]}]}'
+    + ' Alle 7 Tage (Montag-Sonntag), deutsche Gerichte, abwechslungsreich.';
+
+  fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + OPENAI_KEY },
+    body: JSON.stringify({
+      model: 'gpt-4o-mini',
+      max_tokens: 1800,
+      messages: [
+        { role: 'system', content: 'Du antwortest ausschliesslich mit validem JSON ohne Markdown-Formatierung.' },
+        { role: 'user', content: prompt }
+      ]
+    })
+  })
+  .then(function(r) {
+    if(!r.ok) throw new Error('OpenAI HTTP ' + r.status);
+    return r.json();
+  })
+  .then(function(data) {
+    var text = data.choices[0].message.content;
+    // Backticks entfernen falls GPT sie doch setzt
+    text = text.replace(/```json|```/g, '').trim();
+    var plan = JSON.parse(text);
+
+    // Wochenplan-Tage bauen
+    var planDays = [];
+    for(var i=0; i<plan.days.length; i++) {
+      var d = plan.days[i];
+      var isTraining = S.trainingDays && S.trainingDays.indexOf(d.day) >= 0;
+      planDays.push({
+        day: d.day,
+        meals: d.meals,
+        training: isTraining,
+        trainingNote: isTraining ? 'Trainingstag: +250 kcal, extra Protein' : null
+      });
+    }
+    NOVA_DATA.nextWeekProposal.days = planDays;
+    NOVA_DATA.nextWeekProposal.generatedOn = 'Gerade erstellt';
+    NOVA_DATA.nextWeekProposal.novaIntro = 'Hier ist dein neuer Wochenplan - abgestimmt auf dein Ziel von ' + targetCal + ' kcal/Tag. Trainingstage haben mehr Kalorien und Protein. Du kannst jeden Tag anpassen oder direkt bestaetigen!';
+    planConfirmed = false;
+
+    // Einkaufsliste bauen
+    if(plan.shopping && plan.shopping.length) {
+      var catIcons = { 'Obst & Gemuese':'🥦', 'Fleisch & Fisch':'🥩', 'Milchprodukte & Eier':'🥛', 'Trockenware':'🌾', 'Sonstiges':'🛒' };
+      NOVA_DATA.shoppingList.categories = [];
+      for(var ci=0; ci<plan.shopping.length; ci++) {
+        var cat = plan.shopping[ci];
+        if(!cat.items || !cat.items.length) continue;
+        NOVA_DATA.shoppingList.categories.push({
+          icon: catIcons[cat.cat] || '🛒',
+          name: cat.cat,
+          items: cat.items.map(function(it){ return { name: it, amount: '', source: 'Wochenplan', isPantryRefill: false }; })
+        });
+      }
+      NOVA_DATA.shoppingList.novaNote = 'Einkaufsliste aus deinem Wochenplan erstellt.';
+    }
+
+    addMsg('Dein Wochenplan ist fertig! 7 Tage abgestimmt auf ' + targetCal + ' kcal/Tag. Schau ihn dir im Plan-Tab an - die Einkaufsliste ist auch schon vorbereitet!', false);
+    goTo('planPreview');
+    renderPlanPreview();
+  })
+  .catch(function(err) {
+    console.error('GPT Plan error:', err);
+    addMsg('⚠️ Wochenplan konnte nicht erstellt werden: ' + err.message + '. Versuch es nochmal!', false);
+  });
 }
 
 function buildPlanFromSpoonacular(weekData) {
@@ -3785,130 +3869,33 @@ function callNova(userText) {
   var ctOrb = document.getElementById('ctOrb');
   if(ctOrb) ctOrb.classList.add('act');
 
-  // Typing Indicator
   var msgs = document.getElementById('ctmsg');
   var td = document.createElement('div');
   td.className = 'msg nv'; td.id = 'typingIndicator';
   td.innerHTML = '<div class="typbbl"><div class="tyd"></div><div class="tyd"></div><div class="tyd"></div></div>';
   msgs.appendChild(td); msgs.scrollTop = msgs.scrollHeight;
 
-  // Nutzerprofil + Live-App-Status als Kontext
-  var userCtx = buildUserContext();
-  var systemPrompt = NOVA_SYSTEM_PROMPT
-    + '\n\n' + userCtx
-    + '\n\nDu hast direkten Zugriff auf die App ueber Funktionen. NUTZE SIE AKTIV:'
-    + '\n- User nennt KONKRETES Produkt (Capri-Eis, Snickers, Nutella) -> ZUERST lookup_food_database, DANN log_meal mit echten Werten'
-    + '\n- User nennt VAGES Essen (ein Eis, ein Stueck Kuchen) -> log_meal mit Schaetzung UND transparent sagen: "Ich schaetze ca. X kcal - nenn mir das genaue Produkt, dann pruefe ich es exakt!"'
-    + '\n- User erwaehnt Gewicht -> log_weight aufrufen'
-    + '\n- User erwaehnt Training/Sport -> log_training aufrufen'
-    + '\n- User will Einkaufsliste aendern -> update_shopping_list aufrufen'
-    + '\n- User will eigenes Rezept speichern -> Zutaten+Portionen erfragen, dann add_custom_recipe aufrufen'
-    + '\n- User will KOMPLETTEN Wochenplan -> FALLS noch keine Allergien/Unvertraeglichkeiten bekannt: ZUERST kurz danach fragen (eine Frage!), DANN create_weekly_plan mit den Antworten aufrufen'
-    + '\n- User will EINZELNES Rezept oder eine Mahlzeit tauschen -> Rezept direkt im Chat vorschlagen, KEINEN Wochenplan erstellen! Der Wochenplan ist nur der Plan - was der User isst wird per log_meal getrackt.'
-    + '\nRufe Funktionen IMMER direkt auf - frage nicht nach Erlaubnis. Kennzeichne Schaetzungen immer als Schaetzung.';
-
   chatHistory.push({ role: 'user', content: userText });
-  if(chatHistory.length > 10) chatHistory = chatHistory.slice(-10);
+  if(chatHistory.length > 12) chatHistory = chatHistory.slice(-12);
 
-  fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer ' + OPENAI_KEY
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      max_tokens: 400,
-      messages: [
-        { role: 'system', content: systemPrompt }
-      ].concat(chatHistory),
-      tools: NOVA_TOOLS,
-      tool_choice: 'auto'
-    })
-  })
-  .then(function(r) {
-    if(!r.ok) throw new Error('OpenAI HTTP ' + r.status);
-    return r.json();
-  })
-  .then(function(data) {
+  // Tool-Schleife: GPT kann mehrere Runden Tools aufrufen
+  // (z.B. lookup_food_database -> log_meal -> finale Antwort)
+  runNovaTurn(0);
+
+  function finishTurn(replyText) {
     var typEl = document.getElementById('typingIndicator');
-
-    var choice = data.choices && data.choices[0];
-    if(!choice) throw new Error('Keine Antwort erhalten');
-
-    var message = choice.message;
-
-    // FUNCTION CALLING: GPT will Aktionen ausfuehren (sync + async Tools)
-    if(message.tool_calls && message.tool_calls.length > 0) {
-      var toolPromises = message.tool_calls.map(function(tc) {
-        var args = {};
-        try { args = JSON.parse(tc.function.arguments); } catch(e) {}
-        var result = executeTool(tc.function.name, args);
-        // Ergebnis kann String oder Promise sein
-        return Promise.resolve(result).then(function(resolved) {
-          return { role: 'tool', tool_call_id: tc.id, content: resolved };
-        });
-      });
-
-      Promise.all(toolPromises).then(function(toolResults) {
-      var actionSummaries = toolResults.map(function(tr){ return tr.content; });
-
-      // Zweiter API-Call: GPT formuliert finale Antwort mit Tool-Ergebnissen
-      chatHistory.push(message);
-      for(var j=0; j<toolResults.length; j++) chatHistory.push(toolResults[j]);
-
-      fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + OPENAI_KEY
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          max_tokens: 300,
-          messages: [
-            { role: 'system', content: systemPrompt }
-          ].concat(chatHistory)
-        })
-      })
-      .then(function(r2) { return r2.json(); })
-      .then(function(data2) {
-        if(typEl) typEl.remove();
-        if(ctOrb) ctOrb.classList.remove('act');
-        var reply = 'Erledigt!';
-        if(data2.choices && data2.choices[0] && data2.choices[0].message) {
-          reply = data2.choices[0].message.content || actionSummaries.join(' ');
-        }
-        chatHistory.push({ role: 'assistant', content: reply });
-        addMsg(reply, false);
-        speakNovaReply(reply);
-      })
-      .catch(function() {
-        if(typEl) typEl.remove();
-        if(ctOrb) ctOrb.classList.remove('act');
-        var reply = actionSummaries.join(' ');
-        addMsg(reply, false);
-        speakNovaReply(reply);
-      });
-      }); // Ende Promise.all
-      return;
-    }
-
-    // Normale Text-Antwort ohne Aktion
     if(typEl) typEl.remove();
     if(ctOrb) ctOrb.classList.remove('act');
-
-    var replyText = message.content || 'Ich bin gleich wieder da!';
     chatHistory.push({ role: 'assistant', content: replyText });
     addMsg(replyText, false);
     speakNovaReply(replyText);
-  })
-  .catch(function(err) {
+  }
+
+  function failTurn(err) {
     var typEl = document.getElementById('typingIndicator');
     if(typEl) typEl.remove();
     if(ctOrb) ctOrb.classList.remove('act');
     console.error('OpenAI error:', err);
-
     if(!OPENAI_KEY || OPENAI_KEY.length < 20) {
       addMsg('⚠️ Kein API-Key gefunden. Tippe oben auf ⚙️ um deinen Key einzugeben.', false);
     } else if(err.message && err.message.indexOf('401') >= 0) {
@@ -3918,7 +3905,75 @@ function callNova(userText) {
     } else {
       addMsg('⚠️ Verbindungsfehler: ' + (err.message||'unbekannt'), false);
     }
-  });
+  }
+
+  function runNovaTurn(depth) {
+    // Max 4 Tool-Runden um Endlosschleifen zu verhindern
+    if(depth > 4) { finishTurn('Erledigt!'); return; }
+
+    var userCtx = buildUserContext();
+    var systemPrompt = NOVA_SYSTEM_PROMPT
+      + '\n\n' + userCtx
+      + '\n\nDu hast direkten Zugriff auf die App ueber Funktionen. NUTZE SIE AKTIV:'
+      + '\n- User nennt KONKRETES Produkt (Capri-Eis, Snickers, Restaurantpizza) -> ZUERST lookup_food_database, DANACH IMMER log_meal mit den Werten aufrufen! NIE nur sagen "ich logge das" ohne log_meal wirklich aufzurufen!'
+      + '\n- User nennt VAGES Essen (ein Eis, ein Stueck Kuchen) -> log_meal mit Schaetzung UND transparent sagen: "Ich schaetze ca. X kcal - nenn mir das genaue Produkt, dann pruefe ich es exakt!"'
+      + '\n- User hat ein REZEPT MIT GETAUSCHTER ZUTAT gegessen (z.B. Lachsfilet-Rezept aber mit Thunfisch) -> Das KOMPLETTE Rezept loggen, nicht nur die neue Zutat! Nimm die bekannten Rezept-Makros, ziehe die alte Zutat ab, rechne die neue in gleicher Menge drauf. Dann log_meal mit dem Gesamtergebnis + remove_planned_meal fuer das Original.'
+      + '\n- User erwaehnt Gewicht -> log_weight aufrufen'
+      + '\n- User erwaehnt Training/Sport -> log_training aufrufen'
+      + '\n- User will Einkaufsliste aendern -> update_shopping_list aufrufen'
+      + '\n- User will eigenes Rezept speichern -> Zutaten+Portionen erfragen, dann add_custom_recipe aufrufen'
+      + '\n- User will KOMPLETTEN WOCHENplan -> FALLS Allergien unbekannt: erst fragen, dann create_weekly_plan. Der TAGESplan existiert bereits in der App - dafuer NIE create_weekly_plan aufrufen!'
+      + '\n- User will EINZELNES Rezept oder Mahlzeit tauschen -> Rezept im Chat vorschlagen, KEINEN Wochenplan erstellen!'
+      + '\nREGEL: Wenn du sagst dass du etwas eintraegst/loggst/anpasst, MUSS im selben Zug der passende Funktionsaufruf erfolgen. Worte ohne Funktionsaufruf aendern NICHTS in der App!';
+
+    fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + OPENAI_KEY
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        max_tokens: 400,
+        messages: [ { role: 'system', content: systemPrompt } ].concat(chatHistory),
+        tools: NOVA_TOOLS,
+        tool_choice: 'auto'
+      })
+    })
+    .then(function(r) {
+      if(!r.ok) throw new Error('OpenAI HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function(data) {
+      var choice = data.choices && data.choices[0];
+      if(!choice) throw new Error('Keine Antwort erhalten');
+      var message = choice.message;
+
+      if(message.tool_calls && message.tool_calls.length > 0) {
+        // Tools ausfuehren (sync + async)
+        var toolPromises = message.tool_calls.map(function(tc) {
+          var args = {};
+          try { args = JSON.parse(tc.function.arguments); } catch(e) {}
+          var result = executeTool(tc.function.name, args);
+          return Promise.resolve(result).then(function(resolved) {
+            return { role: 'tool', tool_call_id: tc.id, content: resolved };
+          });
+        });
+
+        Promise.all(toolPromises).then(function(toolResults) {
+          chatHistory.push(message);
+          for(var j=0; j<toolResults.length; j++) chatHistory.push(toolResults[j]);
+          // Naechste Runde: GPT kann weitere Tools aufrufen oder final antworten
+          runNovaTurn(depth + 1);
+        });
+        return;
+      }
+
+      // Keine Tools mehr -> finale Antwort
+      finishTurn(message.content || 'Erledigt!');
+    })
+    .catch(failTurn);
+  }
 }
 
 // Einfache Aktions-Erkennung aus User-Text
