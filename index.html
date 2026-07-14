@@ -4020,11 +4020,15 @@ function startVoiceRecording() {
         stream.getTracks().forEach(function(t){ t.stop(); });
         globalMicStream = null;
         if(audioChunks.length > 0) {
-          transcribeAudio(mimeType);
+          // Echten MIME-Type vom Recorder nutzen (zuverlaessiger als der angefragte)
+          var actualType = mediaRecorder.mimeType || mimeType || 'audio/mp4';
+          transcribeAudio(actualType);
         }
       };
 
-      mediaRecorder.start(250); // 250ms Chunks
+      // WICHTIG: KEIN timeslice! iOS erzeugt sonst fragmentierte MP4s
+      // ohne gueltigen Header die Whisper ablehnt. Ein Blob beim Stop.
+      mediaRecorder.start();
     })
     .catch(function(err) {
       console.error('Mic error:', err);
@@ -4050,8 +4054,13 @@ function transcribeAudio(mimeType) {
   // Statusmeldung im Chat
   addMsg('🎙️ Erkenne Sprache...', false);
 
-  var actualMime = mimeType || 'audio/mp4';
-  var ext = actualMime.indexOf('mp4') >= 0 ? 'm4a' : actualMime.indexOf('ogg') >= 0 ? 'ogg' : 'webm';
+  // Codec-Parameter entfernen: "audio/mp4;codecs=mp4a.40.2" -> "audio/mp4"
+  var actualMime = (mimeType || 'audio/mp4').split(';')[0].trim();
+  var ext = 'webm';
+  if(actualMime.indexOf('mp4') >= 0) ext = 'mp4';
+  else if(actualMime.indexOf('ogg') >= 0) ext = 'ogg';
+  else if(actualMime.indexOf('wav') >= 0) ext = 'wav';
+  else if(actualMime.indexOf('mpeg') >= 0 || actualMime.indexOf('mp3') >= 0) ext = 'mp3';
   var blob = new Blob(audioChunks, { type: actualMime });
   audioChunks = [];
 
